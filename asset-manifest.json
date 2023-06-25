@@ -1,16 +1,15 @@
 {
   "files": {
-    "main.css": "/kindernet-page/static/css/main.073c9b0a.css",
-    "main.js": "/kindernet-page/static/js/main.d5fcd318.js",
-    "static/js/787.b55f802d.chunk.js": "/kindernet-page/static/js/787.b55f802d.chunk.js",
-    "static/media/logo.svg": "/kindernet-page/static/media/logo.6ce24c58023cc2f8fd88fe9d219db6c6.svg",
+    "main.css": "/kindernet-page/static/css/main.6e358988.css",
+    "main.js": "/kindernet-page/static/js/main.a747280f.js",
+    "static/media/sinc-logo.png": "/kindernet-page/static/media/sinc-logo.ad1927987c31cb24e787.png",
+    "static/media/ia.png": "/kindernet-page/static/media/ia.9fd4bb2f15077728883b.png",
     "index.html": "/kindernet-page/index.html",
-    "main.073c9b0a.css.map": "/kindernet-page/static/css/main.073c9b0a.css.map",
-    "main.d5fcd318.js.map": "/kindernet-page/static/js/main.d5fcd318.js.map",
-    "787.b55f802d.chunk.js.map": "/kindernet-page/static/js/787.b55f802d.chunk.js.map"
+    "main.6e358988.css.map": "/kindernet-page/static/css/main.6e358988.css.map",
+    "main.a747280f.js.map": "/kindernet-page/static/js/main.a747280f.js.map"
   },
   "entrypoints": [
-    "static/css/main.073c9b0a.css",
-    "static/js/main.d5fcd318.js"
+    "static/css/main.6e358988.css",
+    "static/js/main.a747280f.js"
   ]
 }
