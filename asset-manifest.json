@@ -1,0 +1,16 @@
+{
+  "files": {
+    "main.css": "/kindernet-page/static/css/main.073c9b0a.css",
+    "main.js": "/kindernet-page/static/js/main.d5fcd318.js",
+    "static/js/787.b55f802d.chunk.js": "/kindernet-page/static/js/787.b55f802d.chunk.js",
+    "static/media/logo.svg": "/kindernet-page/static/media/logo.6ce24c58023cc2f8fd88fe9d219db6c6.svg",
+    "index.html": "/kindernet-page/index.html",
+    "main.073c9b0a.css.map": "/kindernet-page/static/css/main.073c9b0a.css.map",
+    "main.d5fcd318.js.map": "/kindernet-page/static/js/main.d5fcd318.js.map",
+    "787.b55f802d.chunk.js.map": "/kindernet-page/static/js/787.b55f802d.chunk.js.map"
+  },
+  "entrypoints": [
+    "static/css/main.073c9b0a.css",
+    "static/js/main.d5fcd318.js"
+  ]
+}
