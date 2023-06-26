@@ -41,6 +41,7 @@ class KinderNet extends React.Component{
             category_names: ["Objeto 1", "Objeto 2"],
             images: Array(2),
             train_tensors: null, // probably ineficent
+            train_features: null,
             train_labels: null,
             accuracy: [0, 0],
             scores: [0, 0],
@@ -80,20 +81,22 @@ class KinderNet extends React.Component{
         
         let classifier = tf.sequential();
         if(net_size === 0){
-            classifier.add(tf.layers.conv2d({filters: 8, kernelSize: 3, activation: 'elu', inputShape: [IMG_SIZE, IMG_SIZE, 3]}))
-            classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
-            classifier.add(tf.layers.conv2d({filters: 16, kernelSize: 3, activation: 'elu'}))
-            classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
-            classifier.add(tf.layers.globalMaxPooling2d({dataFormat: 'channelsLast'}))
-            classifier.add(tf.layers.dense({units: nclasses, activation: 'softmax'}))
-        }
-        if(net_size === 1){
             classifier.add(tf.layers.conv2d({filters: 16, kernelSize: 3, activation: 'elu', inputShape: [IMG_SIZE, IMG_SIZE, 3]}))
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
             classifier.add(tf.layers.conv2d({filters: 32, kernelSize: 3, activation: 'elu'}))
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
             classifier.add(tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'elu'}))
+            classifier.add(tf.layers.globalMaxPooling2d({dataFormat: 'channelsLast'}))
+            classifier.add(tf.layers.dense({units: nclasses, activation: 'softmax'}))
+        }
+        if(net_size === 1){
+            classifier.add(tf.layers.conv2d({filters: 16, kernelSize: 5, activation: 'elu', inputShape: [IMG_SIZE, IMG_SIZE, 3]}))
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
+            classifier.add(tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'elu'}))
+            classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
+            classifier.add(tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'elu'}))
+            classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
+            classifier.add(tf.layers.conv2d({filters: 128, kernelSize: 3, activation: 'elu'}))
             classifier.add(tf.layers.globalMaxPooling2d({dataFormat: 'channelsLast'}))
             classifier.add(tf.layers.dense({units: nclasses, activation: 'softmax'}))
         }    
@@ -104,7 +107,7 @@ class KinderNet extends React.Component{
         classifier.compile({loss: 'categoricalCrossentropy', optimizer: 'sgd', metrics: ['accuracy']});
 
         console.log(JSON.stringify(classifier.outputs[0].shape));
-
+        console.log(classifier.summary())
         return classifier
     }
 
@@ -241,9 +244,16 @@ class KinderNet extends React.Component{
         if(enoughSamples && !this.state.is_training){
 
             console.log('Training model...')
+            let train_input
+            if(this.state.net_size<2){
+                train_input = this.state.train_tensors
+            }
+            else{
+                train_input = this.state.features
+            }
 
             this.setState({is_training: true})
-            this.state.classifier.fit(this.state.train_tensors, this.state.train_labels, {
+            this.state.classifier.fit(train_input, this.state.train_labels, {
                 batchSize: 4,
                 epochs: 20,
                 shuffle: true,
@@ -273,6 +283,7 @@ class KinderNet extends React.Component{
 
             let images = this.state.images
             let train_tensors = this.state.train_tensors
+            let train_features = this.state.train_features
             let train_labels = this.state.train_labels
             let n_samples = this.state.n_samples
             n_samples[category] += 1
@@ -291,10 +302,8 @@ class KinderNet extends React.Component{
                 var tensor = tf.browser.fromPixels(imageData);
                 tensor = tf.image.resizeNearestNeighbor(tensor, [IMG_SIZE, IMG_SIZE]).expandDims(0)
 
-                // if using mobilenet, save features instead of image
-                if(this.state.net_size === 2){
-                    tensor = this.state.mobilenet.infer(tensor, true)
-                }
+                const features = this.state.mobilenet.infer(tensor, true)
+                
 
                 let label = Array(this.state.category_names.length).fill(0)
                 label[category] = 1
@@ -303,13 +312,15 @@ class KinderNet extends React.Component{
                 
                 if (!train_tensors){
                     train_tensors = tensor
+                    train_features = features
                     train_labels = label}
                 else{
                     train_tensors = tf.concat([train_tensors, tensor])
+                    train_features = tf.concat([train_features, features])
                     train_labels = tf.concat([train_labels, label])}
 
-                this.setState({n_samples: n_samples,  output_on: category, images: images, 
-                    train_tensors: train_tensors, train_labels: train_labels, classifying: false})
+                this.setState({n_samples: n_samples,  output_on: category, images, 
+                    train_tensors, train_features, train_labels, classifying: false})
                 
                 
                 console.log("add pic end")
