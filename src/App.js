@@ -11,12 +11,9 @@ import Avatar from '@mui/material/Avatar';
 import logo from "./ia.png"
 import sinclogo from "./sinc-logo.png"
 import * as tf from '@tensorflow/tfjs'
-
-
 import * as mobilenet from '@tensorflow-models/mobilenet';
 
 const IMG_SIZE = 224
-
 
 // event listener
 class EventListener extends React.Component{
@@ -40,7 +37,7 @@ class KinderNet extends React.Component{
             is_training: false,
             category: -1,
             classifying: false,
-            net_size: 2, // mayor valor, mas compleja la red
+            net_size: 0, // mayor valor, mas compleja la red
             category_names: ["Cosa 1", "Cosa 2"],
             images: Array(2),
             train_tensors: null, // probably ineficent
@@ -81,23 +78,26 @@ class KinderNet extends React.Component{
         
         let classifier = tf.sequential();
         if(net_size === 0){
-            classifier.add(tf.layers.conv2d({filters: 16, kernelSize: 3, activation: 'elu', inputShape: [IMG_SIZE, IMG_SIZE, 3]}))
+            classifier.add(tf.layers.conv2d({filters: 8, kernelSize: 3, activation: 'elu', inputShape: [IMG_SIZE, IMG_SIZE, 3]}))
+            classifier.add(tf.layers.batchNormalization())
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
-            classifier.add(tf.layers.conv2d({filters: 32, kernelSize: 3, activation: 'elu'}))
+            classifier.add(tf.layers.conv2d({filters: 8, kernelSize: 3, activation: 'elu'}))
+            classifier.add(tf.layers.batchNormalization())
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
-            classifier.add(tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'elu'}))
-            classifier.add(tf.layers.globalMaxPooling2d({dataFormat: 'channelsLast'}))
+            classifier.add(tf.layers.globalAveragePooling2d({dataFormat: 'channelsLast'}))
             classifier.add(tf.layers.dense({units: nclasses, activation: 'softmax'}))
         }
         if(net_size === 1){
             classifier.add(tf.layers.conv2d({filters: 16, kernelSize: 5, activation: 'elu', inputShape: [IMG_SIZE, IMG_SIZE, 3]}))
+            classifier.add(tf.layers.batchNormalization())
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
             classifier.add(tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'elu'}))
+            classifier.add(tf.layers.batchNormalization())
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
             classifier.add(tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'elu'}))
+            classifier.add(tf.layers.batchNormalization())
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
-            classifier.add(tf.layers.conv2d({filters: 128, kernelSize: 3, activation: 'elu'}))
-            classifier.add(tf.layers.globalMaxPooling2d({dataFormat: 'channelsLast'}))
+            classifier.add(tf.layers.globalAveragePooling2d({dataFormat: 'channelsLast'}))
             classifier.add(tf.layers.dense({units: nclasses, activation: 'softmax'}))
         }    
         if(net_size === 2){
@@ -105,7 +105,7 @@ class KinderNet extends React.Component{
         }
         
         classifier.compile({loss: 'categoricalCrossentropy', optimizer: 'sgd', metrics: ['accuracy']});
-
+        console.log(classifier.summary())
         return classifier
     }
 
@@ -239,7 +239,7 @@ class KinderNet extends React.Component{
         // count number of samples per category in train_labels
         let enoughSamples = true
         for(let i = 0; i < this.state.n_samples.length; i++)
-            if(this.state.n_samples[i]<4) enoughSamples = false 
+            if(this.state.n_samples[i]<6) enoughSamples = false 
 
         // Fit the model only if there are at least 5 samples per category and the model is not training
         if(enoughSamples && !this.state.is_training){
@@ -258,7 +258,7 @@ class KinderNet extends React.Component{
 
             this.state.classifier.fit(train_input, this.state.train_labels, {
                 batchSize: 32,
-                epochs: 5,
+                epochs: 10,
                 shuffle: true,
                 validationData: [train_input, this.state.train_labels],
                 callbacks: {
@@ -365,10 +365,10 @@ class KinderNet extends React.Component{
                     this.setState({n_samples: n_samples,  output_on: category, images, 
                             train_tensors: tensors, train_features: features, train_labels: labels, classifying: false})
                         }
-                    
+                               
+
               };        
               
-
            
            
             }
@@ -489,7 +489,7 @@ class KinderNet extends React.Component{
                             </Grid> 
                             <FormLabel id="radio-buttons-size">Tamaño de la red neuronal</FormLabel>
                             <Grid container justifyContent='center' alignItems='center'>
-                                <RadioGroup aria-labelledby="radio-buttons-size" defaultValue="Grande">
+                                <RadioGroup aria-labelledby="radio-buttons-size" defaultValue="Pequeña">
                                     <FormControlLabel value="Pequeña" control={<Radio onChange={()=>{this.handleClassifierChange(0)}}/>} 
                                     label="Pequeña" />
                                     <FormControlLabel value="Mediana" control={<Radio onChange={()=>{this.handleClassifierChange(1)}}/>} 
