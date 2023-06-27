@@ -213,21 +213,24 @@ class KinderNet extends React.Component{
             const context = canvas.getContext('2d');
             context.drawImage(image, 0, 0);
             const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-            var tensor = tf.browser.fromPixels(imageData).expandDims(0);
-            tensor = tf.image.resizeBilinear(tensor, [IMG_SIZE, IMG_SIZE])
-
-            var output = null
-            if(this.state.net_size === 2){ 
-                // MobileNet preprocessing
-                output = this.state.classifier.predict(this.state.mobilenet.infer(tensor, true))
-            }
-            else{
-                output = this.state.classifier.predict(tensor)
-            }
             
-            const scores = output.arraySync()[0]
-            output.dispose()
+            var output = null
+            var scores = null
+            tf.tidy(() => {
+                var tensor = tf.browser.fromPixels(imageData).expandDims(0);
+                tensor = tf.image.resizeBilinear(tensor, [IMG_SIZE, IMG_SIZE])
 
+                if(this.state.net_size === 2){ 
+                    // MobileNet preprocessing
+                    output = this.state.classifier.predict(this.state.mobilenet.infer(tensor, true))
+                }
+                else{
+                    output = this.state.classifier.predict(tensor)
+                }
+                scores = output.arraySync()[0]
+            }
+            )
+            
             const argmax = this.argmax(scores)
             this.setState({scores: scores, category: argmax, output_on: argmax})   
         };        

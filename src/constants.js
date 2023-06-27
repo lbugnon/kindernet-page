@@ -2,7 +2,7 @@
 export const server_url = "http://localhost:5000"
 export const max_categories = 5
 export const use_timer = true
-export const base_timer = 600
+export const base_timer = 1000
 export const category_colors = ["steelblue", "crimson", "forestgreen", "goldenrod", "purple"]
 // network 
 export const width = 500
