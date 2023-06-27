@@ -13,7 +13,7 @@ import sinclogo from "./sinc-logo.png"
 import * as tf from '@tensorflow/tfjs'
 import * as mobilenet from '@tensorflow-models/mobilenet';
 
-const IMG_SIZE = 224
+const IMG_SIZE = 64
 
 // event listener
 class EventListener extends React.Component{
@@ -240,6 +240,7 @@ class KinderNet extends React.Component{
 
     trainClassifier(){
         // count number of samples per category in train_labels
+        console.log("32?", tf.ENV.getBool('WEBGL_RENDER_FLOAT32_CAPABLE'))
         let enoughSamples = true
         for(let i = 0; i < this.state.n_samples.length; i++)
             if(this.state.n_samples[i]<6) enoughSamples = false 
@@ -248,64 +249,65 @@ class KinderNet extends React.Component{
         if(enoughSamples && !this.state.is_training){
 
             console.log('Training model...')
-            let train_input
-            if(this.state.net_size<2){
-                train_input = this.state.train_tensors
-            }
-            else{
-                train_input = this.state.train_features
-            }
-
             this.setState({is_training: true})
          
-
-            this.state.classifier.fit(train_input, this.state.train_labels, {
-                batchSize: 32,
-                epochs: 10,
-                shuffle: true,
-                validationData: [train_input, this.state.train_labels],
-                callbacks: {
-                    onEpochEnd: (epoch, logs) => {
-                    console.log(`Epoch ${epoch + 1} loss: ${logs.loss.toFixed(2)} acc: ${logs.acc.toFixed(2)} val_loss: ${logs.val_loss.toFixed(2)} val_acc: ${logs.val_acc.toFixed(2)}`);
+            tf.tidy(() => {
+                let train_input, test_input
+                if(this.state.net_size<2){
+                    train_input = this.state.train_tensors
+                    test_input = this.state.test_tensors
                 }
-                },
-                //yieldEvery: 'never',
-            }).then(() => {
-                
-                // if train_input is shorter than train_labels, remove the last column of train_labels
-                let train_labels = this.state.train_labels
-                
-                if(train_input.shape[0] < this.state.train_labels.shape[0]){
-                    train_labels = train_labels.slice([0, 0], [train_input.shape[0], train_labels.shape[1]])}
-
-                // convert one-hot encoding to integer labels
-                let train_labels_int = []
-                for(let i = 0; i < train_labels.shape[0]; i++){
-                    train_labels_int.push(this.argmax(train_labels.arraySync()[i]))
+                else{
+                    train_input = this.state.train_features
+                    test_input = this.state.test_features
                 }
-                
-                // get accuracy per class:
-                let accuracy = Array(this.state.category_names.length).fill(0)
-                let n_samples = Array(this.state.category_names.length).fill(0)
-                let predictions = this.state.classifier.predict(train_input).arraySync()
 
-                for(let i = 0; i < predictions.length; i++){
-                    let argmax = this.argmax(predictions[i])
-                    if(argmax === train_labels_int[i]){
-                        accuracy[argmax] += 1
-                        n_samples[argmax] += 1
+                this.state.classifier.fit(train_input, this.state.train_labels, {
+                    batchSize: 4,
+                    epochs: 10,
+                    shuffle: true,
+                    validationData: [test_input, this.state.test_labels],
+                    callbacks: {
+                        onEpochEnd: (epoch, logs) => {
+                        console.log(`Epoch ${epoch + 1} loss: ${logs.loss.toFixed(2)} acc: ${logs.acc.toFixed(2)} val_loss: ${logs.val_loss.toFixed(2)} val_acc: ${logs.val_acc.toFixed(2)}`);
                     }
-                }
-                for(let i = 0; i < accuracy.length; i++){
-                    if(n_samples[i] > 0) accuracy[i] = accuracy[i]/n_samples[i]
-                }
-                console.log('Training completed.');
-                
-                this.setState({accuracy, is_training: false})
+                    },
+                    yieldEvery: 'never',
+                }).then(() => {
+                    
+                    // if train_input is shorter than train_labels, remove the last column of train_labels
+                    //let train_labels = this.state.train_labels
+                    //if(train_input.shape[0] < this.state.train_labels.shape[0]){
+                    //    train_labels = train_labels.slice([0, 0], [train_input.shape[0], train_labels.shape[1]])}
+
+                    // convert one-hot encoding to integer labels
+                    let test_labels_int = []
+                    for(let i = 0; i < this.state.test_labels.shape[0]; i++){
+                        test_labels_int.push(this.argmax(this.state.test_labels.arraySync()[i]))
+                    }
+                    
+                    // get accuracy per class:
+                    let accuracy = Array(this.state.category_names.length).fill(0)
+                    let n_samples = Array(this.state.category_names.length).fill(0)
+                    let predictions = this.state.classifier.predict(test_input).arraySync()
+
+                    for(let i = 0; i < predictions.length; i++){
+                        let argmax = this.argmax(predictions[i])
+                        if(argmax === test_labels_int[i]){
+                            accuracy[argmax] += 1
+                            n_samples[argmax] += 1
+                        }
+                    }
+                    for(let i = 0; i < accuracy.length; i++){
+                        if(n_samples[i] > 0) accuracy[i] = accuracy[i]/n_samples[i]
+                    }
+                    console.log('Training completed.');
+                    
+                    this.setState({accuracy, is_training: false})
+                    
+                });
                 
             });
-            
-
         }
     }
     
@@ -341,10 +343,11 @@ class KinderNet extends React.Component{
                 context.drawImage(image, 0, 0);
                 const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
                 var tensor = tf.browser.fromPixels(imageData);
-                tensor = tf.image.resizeNearestNeighbor(tensor, [IMG_SIZE, IMG_SIZE]).expandDims(0)
 
+                tensor = tf.image.resizeNearestNeighbor(tensor, [224, 224]).expandDims(0)
                 let feature = this.state.mobilenet.infer(tensor, true)
-                
+
+                tensor = tf.image.resizeNearestNeighbor(tensor, [IMG_SIZE, IMG_SIZE])
 
                 let label = Array(this.state.category_names.length).fill(0)
                 label[category] = 1
