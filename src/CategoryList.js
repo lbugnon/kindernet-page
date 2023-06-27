@@ -17,7 +17,7 @@ export default function CategoryList(props){
     for(let i=0; i<props.category_names.length;i++)
         {
         if(props.n_samples[i]===0)
-            sample_counter = "sin imágenes aún"
+            sample_counter = "sin imágenes"
         if(props.n_samples[i]===1)
             sample_counter = "1 imagen"
         if(props.n_samples[i]>1)
@@ -33,7 +33,7 @@ export default function CategoryList(props){
                         '& label.Mui-focused': {color: category_colors[i]},
                         '& label': {"font-size": "150%"},
                         }} 
-                        label={"Objeto "+ i + ": " + sample_counter} value={props.category_names[i]} 
+                        label={"Cosa "+ (i +1)  + ": " + sample_counter} value={props.category_names[i]} 
                         onFocus={()=>{props.enableKeys(false)}}
                         onBlur={()=>{props.enableKeys(true)}}
                         onChange={(e)=>{props.get_category_names(i, e.target.value)}} variant="standard" 

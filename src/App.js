@@ -2,6 +2,8 @@
 import './App.css';
 import Webcam from "react-webcam";
 import {Link, Toolbar, Dialog, DialogTitle, IconButton, Typography, Button,  Card, Box, AppBar,  Grid, CssBaseline, Switch,  FormControlLabel, FormLabel, Radio, RadioGroup, DialogContent} from '@mui/material';
+import AddIcon from '@mui/icons-material/Add';
+import DeleteIcon from '@mui/icons-material/Delete';
 import CategoryList from "./CategoryList"
 import { Network } from './NeuralNetwork';
 import {height, unit_sep, use_timer, base_timer} from './constants';
@@ -9,11 +11,12 @@ import Avatar from '@mui/material/Avatar';
 import logo from "./ia.png"
 import sinclogo from "./sinc-logo.png"
 import * as tf from '@tensorflow/tfjs'
+
+
 import * as mobilenet from '@tensorflow-models/mobilenet';
 
 const IMG_SIZE = 224
 
-console.log(logo)
 
 // event listener
 class EventListener extends React.Component{
@@ -37,18 +40,22 @@ class KinderNet extends React.Component{
             is_training: false,
             category: -1,
             classifying: false,
-            net_size: 0, // mayor valor, mas compleja la red
-            category_names: ["Objeto 1", "Objeto 2"],
+            net_size: 2, // mayor valor, mas compleja la red
+            category_names: ["Cosa 1", "Cosa 2"],
             images: Array(2),
             train_tensors: null, // probably ineficent
             train_features: null,
             train_labels: null,
+            test_tensors: null, 
+            test_features: null,
+            test_labels: null,
             accuracy: [0, 0],
             scores: [0, 0],
             n_samples : [0,0], // n_samples  de la clase actual durante el entrenamiento
             output_on: -1,
             listen_keys: true,
             output_ypos: [0, 0],
+            help: false,
             about: false
         };
         this.response = null
@@ -71,13 +78,6 @@ class KinderNet extends React.Component{
 
   
     defineNet(net_size, nclasses){
-
-        // create async function to load model
-        async function loadModel() {
-            return await mobilenet.load();
-        }
-        // load model
-        loadModel().then((mobilenet) => {this.setState({mobilenet})});
         
         let classifier = tf.sequential();
         if(net_size === 0){
@@ -106,32 +106,26 @@ class KinderNet extends React.Component{
         
         classifier.compile({loss: 'categoricalCrossentropy', optimizer: 'sgd', metrics: ['accuracy']});
 
-        console.log(JSON.stringify(classifier.outputs[0].shape));
-        console.log(classifier.summary())
         return classifier
     }
 
     componentDidMount() {
         // Inicializa el modelo
 
-        
-        // local
-        this.setState({classifier: this.defineNet(0, 2)})
+        // create async function to load model
+        async function loadModel() {
+            return await mobilenet.load();
+        }
+        // load model
+        loadModel().then((mobilenet) => {this.setState({mobilenet})});
+
+
+        this.setState({classifier: this.defineNet(this.state.net_size, this.state.n_samples.length)})
         console.log("Init!")
-
-
-        // server
-        //fetch(server_url, {
-        //    method: "POST",
-        //    //credentials: "include",
-        //    cache: "no-cache",
-        //    headers: new Headers({"content-type": "application/json"})
-        //}).then(response => response.json()).then(json => console.log("Init!"))
 
         // Inicializa el timer
         if(use_timer)
             setTimeout(this.handleTimerOut, base_timer)
-
     }
 
     handleClassifierChange(net_size){
@@ -141,12 +135,12 @@ class KinderNet extends React.Component{
     }
     handleAddCategory(){
         let category_names = this.state.category_names
-        category_names.push("Objeto " + (category_names.length + 1))
+        category_names.push("Cosa " + (category_names.length + 1))
         let n_samples = this.state.n_samples
         n_samples.push(0)
         let zeros = Array(category_names.length).fill(0)
         
-        // add column to train_labels tensor 
+        // add column to labels tensor 
         let train_labels = null
         if(this.state.train_labels){
             train_labels = this.state.train_labels
@@ -154,7 +148,14 @@ class KinderNet extends React.Component{
             train_labels = tf.concat([train_labels, new_column], 1)
         }
 
-        this.setState({category_names, classifier: this.defineNet(this.state.net_size, category_names.length), n_samples: n_samples, category: -1, output_on: -1, classifying: false, accuracy: zeros, train_labels: train_labels})
+        let test_labels = null
+        if(this.state.test_labels){
+            test_labels = this.state.test_labels
+            let new_column = tf.zeros([test_labels.shape[0], 1])
+            test_labels = tf.concat([test_labels, new_column], 1)
+        }
+
+        this.setState({category_names, classifier: this.defineNet(this.state.net_size, category_names.length), n_samples, category: -1, output_on: -1, classifying: false, accuracy: zeros, train_labels, test_labels})
         return
     }
     handleRemoveCategory(category){
@@ -238,7 +239,7 @@ class KinderNet extends React.Component{
         // count number of samples per category in train_labels
         let enoughSamples = true
         for(let i = 0; i < this.state.n_samples.length; i++)
-            if(this.state.n_samples[i]<2) enoughSamples = false 
+            if(this.state.n_samples[i]<4) enoughSamples = false 
 
         // Fit the model only if there are at least 5 samples per category and the model is not training
         if(enoughSamples && !this.state.is_training){
@@ -249,26 +250,57 @@ class KinderNet extends React.Component{
                 train_input = this.state.train_tensors
             }
             else{
-                train_input = this.state.features
+                train_input = this.state.train_features
             }
 
             this.setState({is_training: true})
+         
+
             this.state.classifier.fit(train_input, this.state.train_labels, {
-                batchSize: 4,
-                epochs: 20,
+                batchSize: 32,
+                epochs: 5,
                 shuffle: true,
+                validationData: [train_input, this.state.train_labels],
                 callbacks: {
-                onEpochEnd: (epoch, logs) => {
-                    console.log(`Epoch ${epoch + 1} loss: ${logs.loss}`);
+                    onEpochEnd: (epoch, logs) => {
+                    console.log(`Epoch ${epoch + 1} loss: ${logs.loss.toFixed(2)} acc: ${logs.acc.toFixed(2)} val_loss: ${logs.val_loss.toFixed(2)} val_acc: ${logs.val_acc.toFixed(2)}`);
                 }
                 },
                 //yieldEvery: 'never',
             }).then(() => {
+                
+                // if train_input is shorter than train_labels, remove the last column of train_labels
+                let train_labels = this.state.train_labels
+                
+                if(train_input.shape[0] < this.state.train_labels.shape[0]){
+                    train_labels = train_labels.slice([0, 0], [train_input.shape[0], train_labels.shape[1]])}
+
+                // convert one-hot encoding to integer labels
+                let train_labels_int = []
+                for(let i = 0; i < train_labels.shape[0]; i++){
+                    train_labels_int.push(this.argmax(train_labels.arraySync()[i]))
+                }
+                
+                // get accuracy per class:
+                let accuracy = Array(this.state.category_names.length).fill(0)
+                let n_samples = Array(this.state.category_names.length).fill(0)
+                let predictions = this.state.classifier.predict(train_input).arraySync()
+
+                for(let i = 0; i < predictions.length; i++){
+                    let argmax = this.argmax(predictions[i])
+                    if(argmax === train_labels_int[i]){
+                        accuracy[argmax] += 1
+                        n_samples[argmax] += 1
+                    }
+                }
+                for(let i = 0; i < accuracy.length; i++){
+                    if(n_samples[i] > 0) accuracy[i] = accuracy[i]/n_samples[i]
+                }
                 console.log('Training completed.');
-                //let accuracy = [.1, .2]
-                this.setState({is_training: false})
+                
+                this.setState({accuracy, is_training: false})
+                
             });
-            console.log('COntiue training?...')
             
 
         }
@@ -276,19 +308,25 @@ class KinderNet extends React.Component{
     
     
     addPic(category){
-        console.log("add pic call")
 
         if(this.state.output_on === -1){
-            console.log("add pic valid")
 
             let images = this.state.images
-            let train_tensors = this.state.train_tensors
-            let train_features = this.state.train_features
-            let train_labels = this.state.train_labels
             let n_samples = this.state.n_samples
             n_samples[category] += 1
             images[category] = this.webcam.getScreenshot()
             
+            // the first images per class go to test
+            var tensors, features, labels
+            if(n_samples[category] < 5){
+                tensors = this.state.test_tensors
+                features = this.state.test_features
+                labels = this.state.test_labels}
+            else{
+                tensors = this.state.train_tensors
+                features = this.state.train_features
+                labels = this.state.train_labels}
+
             const image = new Image();
             image.src = images[category];
 
@@ -302,7 +340,7 @@ class KinderNet extends React.Component{
                 var tensor = tf.browser.fromPixels(imageData);
                 tensor = tf.image.resizeNearestNeighbor(tensor, [IMG_SIZE, IMG_SIZE]).expandDims(0)
 
-                const features = this.state.mobilenet.infer(tensor, true)
+                let feature = this.state.mobilenet.infer(tensor, true)
                 
 
                 let label = Array(this.state.category_names.length).fill(0)
@@ -310,21 +348,24 @@ class KinderNet extends React.Component{
                 // convert label to tensor of dimension [1, 2]
                 label = tf.tensor(label).expandDims(0)
                 
-                if (!train_tensors){
-                    train_tensors = tensor
-                    train_features = features
-                    train_labels = label}
+                if (!tensors){
+                    tensors = tensor
+                    features = feature
+                    labels = label}
                 else{
-                    train_tensors = tf.concat([train_tensors, tensor])
-                    train_features = tf.concat([train_features, features])
-                    train_labels = tf.concat([train_labels, label])}
-
-                this.setState({n_samples: n_samples,  output_on: category, images, 
-                    train_tensors, train_features, train_labels, classifying: false})
+                    tensors = tf.concat([tensors, tensor])
+                    features = tf.concat([features, feature])
+                    labels = tf.concat([labels, label])}
                 
-                
-                console.log("add pic end")
-
+                if(n_samples[category] < 3){
+                        this.setState({n_samples: n_samples,  output_on: category, images, 
+                          test_tensors: tensors, test_features: features, test_labels: labels, classifying: false})
+                        }
+                else{
+                    this.setState({n_samples: n_samples,  output_on: category, images, 
+                            train_tensors: tensors, train_features: features, train_labels: labels, classifying: false})
+                        }
+                    
               };        
               
 
@@ -384,6 +425,7 @@ class KinderNet extends React.Component{
                     <Typography variant="h5" component="div" sx={{ flexGrow: 1 }}>
                         KinderNet: ¡Enseñemos a la compu a ver!
                     </Typography>
+                    <Button onClick={()=>{this.setState({help: true})}} color="inherit">Ayuda</Button>
                     <Button onClick={()=>{this.setState({about: true})}} color="inherit">Acerca de</Button>
                     </Toolbar>
                     
@@ -394,11 +436,40 @@ class KinderNet extends React.Component{
                     <DialogContent >
                         <Typography align="justify">
                             Este es un proyecto de aplicación web desarrollado  desde el <Link href="http://www.sinc.unl.edu.ar">sinc(i)</Link> para aprender sobre redes neuronales con alumnos de primaria y secundaria. El objetivo es que 
-                            los alumnos puedan entrenar su propia red neuronal para reconocer objetos que se presenten a la camara web, de una forma interactiva. 
+                            los alumnos puedan entrenar su propia red neuronal para reconocer cosas que se presenten a la camara web, de una forma interactiva. 
                             Los alumnos puedan jugar y experimentar con el proceso de entrenamiento y prueba de redes neuronales, cambiando el tamaño de la red, 
-                            cantidad y tipos de clases. La red es sencilla pero puede aprender a discriminar objetos con muy pocos ejemplos.
+                            cantidad y tipos de clases. La red es sencilla pero puede aprender a discriminar cosas con muy pocos ejemplos.
                             <br/> <br/>
                             Más detalles en el <Link href="https://github.com/lbugnon/kinderNet">repositorio del proyecto</Link>.
+                        </Typography>
+                            
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog onClose={()=>{this.setState({help: false})}} open={this.state.help}>
+                    <DialogTitle>Instrucciones</DialogTitle>
+                    <DialogContent >
+                        <Typography align="justify">
+                            Antes de comenzar, definamos las cosas que vamos a clasificar. Por ejemplo: "manzana" y "banana" en lugar de "Cosa 1" y "Cosa 2".
+                            
+                            <br/> <br/>
+                        
+                            Para comenzar a entrenar la red neuronal, ubicar la primer cosa en la webcam y apretar el 1 o hacer click en la neurona correspondiente de la derecha. Esto va a tomar una foto y pasársela a la red para que vaya aprendiendo.
+
+                            <br/> <br/>
+                        
+                            Hacer lo mismo con la otra clase hasta que tenga al menos 6 ejemplos cada una. Las barras de la derecha indican qué tan bien la red está aprendiendo cada clase. Si la barra está llena, la red ya aprendió todo lo que puede de esa cosa. Si la barra está vacía, la red no sabe nada de esa cosa.
+
+                            <br/> <br/>
+
+                            Una vez que la red haya aprendido, se puede probar haciendo click en el botón de la izquierda para que indique "Probando". La cámara tomará fotos y las pasará por la red para que indique la cosa que reconoce. 
+    
+                            <br/> <br/>
+
+                            Podés sumar más cosas haciendo click en el botón <AddIcon/> a la derecha. También podés borrar una cosas haciendo click en el botón <DeleteIcon/>. Refrescando la página (F5) se borra todo y se vuelve a empezar. 
+
+                            
+
                         </Typography>
                             
                     </DialogContent>
@@ -418,7 +489,7 @@ class KinderNet extends React.Component{
                             </Grid> 
                             <FormLabel id="radio-buttons-size">Tamaño de la red neuronal</FormLabel>
                             <Grid container justifyContent='center' alignItems='center'>
-                                <RadioGroup aria-labelledby="radio-buttons-size" defaultValue="Pequeña">
+                                <RadioGroup aria-labelledby="radio-buttons-size" defaultValue="Grande">
                                     <FormControlLabel value="Pequeña" control={<Radio onChange={()=>{this.handleClassifierChange(0)}}/>} 
                                     label="Pequeña" />
                                     <FormControlLabel value="Mediana" control={<Radio onChange={()=>{this.handleClassifierChange(1)}}/>} 
