@@ -219,15 +219,15 @@ class KinderNet extends React.Component{
             var output = null
             if(this.state.net_size === 2){ 
                 // MobileNet preprocessing
-                const features = this.state.mobilenet.infer(tensor, true)
-                output = this.state.classifier.predict(features)
-            
+                output = this.state.classifier.predict(this.state.mobilenet.infer(tensor, true))
             }
             else{
                 output = this.state.classifier.predict(tensor)
             }
             
             const scores = output.arraySync()[0]
+            output.dispose()
+
             const argmax = this.argmax(scores)
             this.setState({scores: scores, category: argmax, output_on: argmax})   
         };        
