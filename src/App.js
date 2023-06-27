@@ -81,25 +81,18 @@ class KinderNet extends React.Component{
             classifier.add(tf.layers.conv2d({filters: 8, kernelSize: 3, activation: 'elu', inputShape: [IMG_SIZE, IMG_SIZE, 3]}))
             classifier.add(tf.layers.batchNormalization())
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
-            classifier.add(tf.layers.conv2d({filters: 8, kernelSize: 3, activation: 'elu'}))
+            classifier.add(tf.layers.globalAveragePooling2d({dataFormat: 'channelsLast'}))
+            classifier.add(tf.layers.dense({units: nclasses, activation: 'softmax'}))
+        }if(net_size === 1){
+            classifier.add(tf.layers.conv2d({filters: 8, kernelSize: 3, activation: 'elu', inputShape: [IMG_SIZE, IMG_SIZE, 3]}))
+            classifier.add(tf.layers.batchNormalization())
+            classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
+            classifier.add(tf.layers.conv2d({filters: 16, kernelSize: 3, activation: 'elu'}))
             classifier.add(tf.layers.batchNormalization())
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
             classifier.add(tf.layers.globalAveragePooling2d({dataFormat: 'channelsLast'}))
             classifier.add(tf.layers.dense({units: nclasses, activation: 'softmax'}))
         }
-        if(net_size === 1){
-            classifier.add(tf.layers.conv2d({filters: 16, kernelSize: 5, activation: 'elu', inputShape: [IMG_SIZE, IMG_SIZE, 3]}))
-            classifier.add(tf.layers.batchNormalization())
-            classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
-            classifier.add(tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'elu'}))
-            classifier.add(tf.layers.batchNormalization())
-            classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
-            classifier.add(tf.layers.conv2d({filters: 64, kernelSize: 3, activation: 'elu'}))
-            classifier.add(tf.layers.batchNormalization())
-            classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
-            classifier.add(tf.layers.globalAveragePooling2d({dataFormat: 'channelsLast'}))
-            classifier.add(tf.layers.dense({units: nclasses, activation: 'softmax'}))
-        }    
         if(net_size === 2){
             classifier.add(tf.layers.dense({units: nclasses, activation: 'softmax', inputShape: 1024}))
         }
