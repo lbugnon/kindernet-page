@@ -15,7 +15,7 @@ import * as mobilenet from '@tensorflow-models/mobilenet';
 
 const IMG_SIZE = 64
 const TEST_SAMPLES = 2
-const MIN_SAMPLES = 3
+const MIN_SAMPLES = 5
 
 // probably not the most elegant way to do this
 window.classifier = null
@@ -482,11 +482,11 @@ class KinderNet extends React.Component{
                             
                             <br/> <br/>
                         
-                            Para comenzar a entrenar la red neuronal, ubicar la primer cosa en la webcam y apretar el 1 o hacer click en la neurona correspondiente de la derecha. Esto va a tomar una foto y pasársela a la red para que vaya aprendiendo.
+                            Para comenzar a entrenar la red neuronal, ubicar la primer cosa en la webcam y apretar el 1 o hacer click en la neurona correspondiente de la derecha. Se va a tomar una foto que se pasará a la red para que vaya aprendiendo.
 
                             <br/> <br/>
                         
-                            Hacer lo mismo con la otra clase hasta que tenga al menos {MIN_SAMPLES} ejemplos cada una. Las barras de la derecha indican qué tan bien la red está aprendiendo cada clase. Si la barra está llena, la red ya aprendió todo lo que puede de esa cosa. Si la barra está vacía, la red no sabe nada de esa cosa.
+                            Hacer lo mismo con la otra cosa hasta que tenga al menos {MIN_SAMPLES} ejemplos cada una. Las barras de la derecha indican qué tan bien la red está aprendiendo cada clase. Si la barra está llena, la red ya aprendió todo lo que puede de esa cosa. Si la barra está vacía, la red no sabe nada de esa cosa.
 
                             <br/> <br/>
 
