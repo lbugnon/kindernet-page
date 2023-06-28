@@ -531,7 +531,8 @@ class KinderNet extends React.Component{
                     </Grid>
 
                     <Grid item sm={4}>
-                        <Network onClick={this.handleTrain} category = {this.state.output_on} onTransitionEnd = {this.handleTransitionEnd}
+                        
+                        <Network is_enabled={this.state.listen_keys} onClick={this.handleTrain} category = {this.state.output_on} onTransitionEnd = {this.handleTransitionEnd}
                             size = {this.state.net_size} n_outputs = {this.state.category_names.length}
                             classifying = {this.state.classifying} />        
                          

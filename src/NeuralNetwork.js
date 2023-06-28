@@ -104,7 +104,7 @@ export function Network(props){
             let color = "white"
             if(is_on){color=category_colors[props.category]}
             layers[i][j] = <Neuron onClick={props.onClick} key={j} onTransitionEnd={props.onTransitionEnd} is_on={is_on}
-                                   is_hidden={(j >= nunits[i])} layer={i} k_pos={j} output_active={props.category === j}
+                                   is_hidden={(j >= nunits[i]) || !props.is_enabled} layer={i} k_pos={j} output_active={props.category === j}
                                    x={xpos[i]} y={ypos[i][j]} color={color}/>
 
 
@@ -132,7 +132,7 @@ export function Network(props){
                         }
                     }
                 }
-                if (j >= nunits[i] || z >= nunits[i+1])
+                if (j >= nunits[i] || z >= nunits[i+1] || !props.is_enabled)
                         style += " hidden"
 
                 lines[ind] = <path key={ind} stroke={color}
