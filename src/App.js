@@ -47,6 +47,7 @@ class KinderNet extends React.Component{
         super(props);
         this.state={
             is_training: false,
+            is_adding_pic: false,
             category: -1,
             classifying: false,
             net_size: 0, // mayor valor, mas compleja la red
@@ -108,7 +109,7 @@ class KinderNet extends React.Component{
     }
 
     componentDidMount() {
-        // Inicializa el modelo
+        
 
         // create async function to load model
         async function loadModel() {
@@ -284,6 +285,7 @@ class KinderNet extends React.Component{
             this.setState({is_training: true})
          
             tf.tidy(() => {
+
                 let train_input, test_input
                 if(this.state.net_size<2){
                     train_input = window.train_tensors
@@ -295,7 +297,7 @@ class KinderNet extends React.Component{
                 }
 
                 window.classifier.fit(train_input, window.train_labels, {
-                    batchSize: 4,
+                    batchSize: 8,
                     epochs: 10,
                     shuffle: true,
                     //validationData: [test_input, window.test_labels],
@@ -330,7 +332,7 @@ class KinderNet extends React.Component{
                     }
                     
                     this.setState({accuracy: avgscore, is_training: false})
-                    
+
                 });
                 
             });
@@ -340,8 +342,8 @@ class KinderNet extends React.Component{
     
     addPic(category){
 
-        if(this.state.output_on === -1){
-
+        if(this.state.output_on === -1 && !this.state.is_adding_pic){
+            this.setState({is_adding_pic: true})
             let images = this.state.images
             let n_samples = this.state.n_samples
             n_samples[category] += 1
@@ -392,9 +394,7 @@ class KinderNet extends React.Component{
                         window.test_labels = tf.concat([window.test_labels, label])}
                     }
                     
-                this.setState({n_samples,  output_on: category, images, classifying: false})
-                        
-
+                this.setState({n_samples,  output_on: category, images, is_adding_pic: false})
               };        
               
            
