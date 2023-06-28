@@ -1,4 +1,4 @@
-﻿import React from 'react';
+import React from 'react';
 import './App.css';
 import Webcam from "react-webcam";
 import {Link, Toolbar, Dialog, DialogTitle, IconButton, Typography, Button,  Card, Box, AppBar,  Grid, CssBaseline, Switch,  FormControlLabel, FormLabel, Radio, RadioGroup, DialogContent} from '@mui/material';
@@ -14,6 +14,8 @@ import * as tf from '@tensorflow/tfjs'
 import * as mobilenet from '@tensorflow-models/mobilenet';
 
 const IMG_SIZE = 64
+const TEST_SAMPLES = 2
+const MIN_SAMPLES = 3
 
 // event listener
 class EventListener extends React.Component{
@@ -50,7 +52,7 @@ class KinderNet extends React.Component{
             scores: [0, 0],
             n_samples : [0,0], // n_samples  de la clase actual durante el entrenamiento
             output_on: -1,
-            listen_keys: true,
+            listen_keys: false,
             output_ypos: [0, 0],
             help: false,
             about: false
@@ -110,7 +112,7 @@ class KinderNet extends React.Component{
             return await mobilenet.load();
         }
         // load model
-        loadModel().then((mobilenet) => {this.setState({mobilenet})});
+        loadModel().then((mobilenet) => {this.setState({mobilenet, listen_keys: true}); console.log("mobilenet ok")});
 
 
         this.setState({classifier: this.defineNet(this.state.net_size, this.state.n_samples.length)})
@@ -153,14 +155,57 @@ class KinderNet extends React.Component{
     }
     handleRemoveCategory(category){
         let category_names = this.state.category_names
+        let n_samples = this.state.n_samples
         let images = this.state.images        
         category_names.splice(category, 1)
         images.splice(category, 1)
-        
-        this.serverCall("/eliminar_categoria/", {category: category}).then(
-            response=>this.setState({n_samples: response.n_samples, images: images, category_names: category_names, category: -1, 
-                                     output_on: -1, classifying: false, accuracy: Array(this.state.category_names.length).fill(0)}))
 
+        n_samples.splice(category, 1)
+        
+        // remove files and columns of category
+        tf.tidy(() => {
+            let train_labels = this.state.train_labels
+            let train_features = this.state.train_features
+            let train_tensors = this.state.train_tensors
+            if(train_labels){
+                let ind = []
+                let labels_data = train_labels.arraySync()
+                for(let i = 0; i < train_labels.shape[0]; i++)
+                    if(labels_data[i][category] === 0)
+                    ind.push(i)
+                ind = tf.tensor1d(ind, 'int32');
+
+                train_labels = train_labels.gather(ind)
+                train_features = train_features.gather(ind)
+                train_tensors = train_tensors.gather(ind)
+
+                ind = tf.tensor1d(Array.from(Array(train_labels.shape[1]).keys()).filter(x => x !== category), 'int32')
+                train_labels = train_labels.gather(ind, 1)
+            }              
+            
+            let test_labels = this.state.test_labels
+            let test_features = this.state.test_features
+            let test_tensors = this.state.test_tensors
+            if(test_labels){
+                let ind = []
+                let labels_data = test_labels.arraySync()
+                for(let i = 0; i < test_labels.shape[0]; i++)
+                    if(labels_data[i][category] === 0)
+                    ind.push(i)
+                ind = tf.tensor1d(ind, 'int32');
+
+                test_labels = test_labels.gather(ind)
+                test_features = test_features.gather(ind)
+                test_tensors = test_tensors.gather(ind)
+
+                ind = tf.tensor1d(Array.from(Array(test_labels.shape[1]).keys()).filter(x => x !== category), 'int32')
+                test_labels = test_labels.gather(ind, 1)
+            }
+
+            this.setState({n_samples, images, category_names, category: -1, classifier: this.defineNet(this.state.net_size, n_samples.length),
+                output_on: -1, classifying: false, accuracy: Array(this.state.category_names.length).fill(0),
+                test_tensors, test_features, test_labels, train_tensors, train_features, train_labels})
+            })
         return
     }
     handleTimerOut(){
@@ -233,12 +278,13 @@ class KinderNet extends React.Component{
 
     trainClassifier(){
         // count number of samples per category in train_labels
-        console.log("32?", tf.ENV.getBool('WEBGL_RENDER_FLOAT32_CAPABLE'))
+
         let enoughSamples = true
         for(let i = 0; i < this.state.n_samples.length; i++)
-            if(this.state.n_samples[i]<6) enoughSamples = false 
-
-        // Fit the model only if there are at least 5 samples per category and the model is not training
+            if(this.state.n_samples[i]<MIN_SAMPLES) enoughSamples = false 
+           
+        
+        // Fit the model only if there are at least N samples per category, the model is not training
         if(enoughSamples && !this.state.is_training){
 
             console.log('Training model...')
@@ -255,24 +301,24 @@ class KinderNet extends React.Component{
                     test_input = this.state.test_features
                 }
 
+                console.log("total count", this.state.n_samples)
+                console.log("train data", train_input.shape)
+                console.log("train labels", this.state.train_labels.shape)
+                console.log("test data", this.state.test_tensors.shape)
+                console.log("test labels", this.state.test_labels.shape)
                 this.state.classifier.fit(train_input, this.state.train_labels, {
                     batchSize: 4,
                     epochs: 10,
                     shuffle: true,
                     validationData: [test_input, this.state.test_labels],
-                    callbacks: {
-                        onEpochEnd: (epoch, logs) => {
-                        console.log(`Epoch ${epoch + 1} loss: ${logs.loss.toFixed(2)} acc: ${logs.acc.toFixed(2)} val_loss: ${logs.val_loss.toFixed(2)} val_acc: ${logs.val_acc.toFixed(2)}`);
-                    }
-                    },
+                    //callbacks: {
+                    //    onEpochEnd: (epoch, logs) => {
+                    //    console.log(`Epoch ${epoch + 1} loss: ${logs.loss.toFixed(2)} acc: ${logs.acc.toFixed(2)} val_loss: ${logs.val_loss.toFixed(2)} val_acc: ${logs.val_acc.toFixed(2)}`);
+                    //}
+                    //},
                     yieldEvery: 'never',
                 }).then(() => {
                     
-                    // if train_input is shorter than train_labels, remove the last column of train_labels
-                    //let train_labels = this.state.train_labels
-                    //if(train_input.shape[0] < this.state.train_labels.shape[0]){
-                    //    train_labels = train_labels.slice([0, 0], [train_input.shape[0], train_labels.shape[1]])}
-
                     // convert one-hot encoding to integer labels
                     let test_labels_int = []
                     for(let i = 0; i < this.state.test_labels.shape[0]; i++){
@@ -295,6 +341,9 @@ class KinderNet extends React.Component{
                         if(n_samples[i] > 0) accuracy[i] = accuracy[i]/n_samples[i]
                     }
                     console.log('Training completed.');
+                    console.log("train labels", this.state.train_labels.shape)
+                    console.log("total count", this.state.n_samples)
+                
                     
                     this.setState({accuracy, is_training: false})
                     
@@ -316,7 +365,7 @@ class KinderNet extends React.Component{
             
             // the first images per class go to test
             var tensors, features, labels
-            if(n_samples[category] < 5){
+            if(n_samples[category] <= TEST_SAMPLES){
                 tensors = this.state.test_tensors
                 features = this.state.test_features
                 labels = this.state.test_labels}
@@ -344,7 +393,6 @@ class KinderNet extends React.Component{
 
                 let label = Array(this.state.category_names.length).fill(0)
                 label[category] = 1
-                // convert label to tensor of dimension [1, 2]
                 label = tf.tensor(label).expandDims(0)
                 
                 if (!tensors){
@@ -356,15 +404,15 @@ class KinderNet extends React.Component{
                     features = tf.concat([features, feature])
                     labels = tf.concat([labels, label])}
                 
-                if(n_samples[category] < 3){
-                        this.setState({n_samples: n_samples,  output_on: category, images, 
-                          test_tensors: tensors, test_features: features, test_labels: labels, classifying: false})
+                if(n_samples[category] <= TEST_SAMPLES){
+                        this.setState({test_tensors: tensors, test_features: features, test_labels: labels})
                         }
                 else{
-                    this.setState({n_samples: n_samples,  output_on: category, images, 
-                            train_tensors: tensors, train_features: features, train_labels: labels, classifying: false})
+                    this.setState({train_tensors: tensors, train_features: features, train_labels: labels})
                         }
-                               
+                
+                this.setState({n_samples,  output_on: category, images, classifying: false})
+                        
 
               };        
               
@@ -457,7 +505,7 @@ class KinderNet extends React.Component{
 
                             <br/> <br/>
                         
-                            Hacer lo mismo con la otra clase hasta que tenga al menos 6 ejemplos cada una. Las barras de la derecha indican qué tan bien la red está aprendiendo cada clase. Si la barra está llena, la red ya aprendió todo lo que puede de esa cosa. Si la barra está vacía, la red no sabe nada de esa cosa.
+                            Hacer lo mismo con la otra clase hasta que tenga al menos {MIN_SAMPLES} ejemplos cada una. Las barras de la derecha indican qué tan bien la red está aprendiendo cada clase. Si la barra está llena, la red ya aprendió todo lo que puede de esa cosa. Si la barra está vacía, la red no sabe nada de esa cosa.
 
                             <br/> <br/>
 
