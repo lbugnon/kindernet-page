@@ -1,7 +1,8 @@
 import React from 'react';
 import './App.css';
 import Webcam from "react-webcam";
-import {Link, Toolbar, Dialog, DialogTitle, IconButton, Typography, Button,  Card, Box, AppBar,  Grid, CssBaseline, Switch,  FormControlLabel, FormLabel, Radio, RadioGroup, DialogContent} from '@mui/material';
+import {Link, Toolbar, Dialog, DialogTitle, IconButton, Typography, Button,  Card, Box, AppBar, TextField,
+    Grid, CssBaseline, Switch,  FormControlLabel, FormLabel, Radio, RadioGroup, DialogContent} from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import CategoryList from "./CategoryList"
@@ -13,20 +14,8 @@ import sinclogo from "./sinc-logo.png"
 import * as tf from '@tensorflow/tfjs'
 import * as mobilenet from '@tensorflow-models/mobilenet';
 
-const IMG_SIZE = 64
-const TEST_SAMPLES = 2
-const MIN_SAMPLES = 5
-
-// probably not the most elegant way to do this
-window.classifier = null
-window.mobilenet = null
-
-window.train_data = null
-window.train_features = null
-window.train_labels = null
-window.test_data = null
-window.test_features = null
-window.test_labels = null
+var TEST_SAMPLES = 2
+var MIN_SAMPLES = 5
 
 // event listener
 class EventListener extends React.Component{
@@ -46,6 +35,7 @@ class KinderNet extends React.Component{
     constructor(props){
         super(props);
         this.state={
+            img_size: 64,
             is_training: false,
             is_adding_pic: false,
             category: -1,
@@ -60,6 +50,7 @@ class KinderNet extends React.Component{
             listen_keys: false,
             output_ypos: [0, 0],
             help: false,
+            config: false,
             about: false
         };
         this.response = null
@@ -77,7 +68,7 @@ class KinderNet extends React.Component{
         this.classifyPic = this.classifyPic.bind(this);
     }
     setRef = webcam => {
-        this.webcam = webcam;
+        window.webcam = webcam;
     };
 
   
@@ -85,16 +76,16 @@ class KinderNet extends React.Component{
         
         let classifier = tf.sequential();
         if(net_size === 0){
-            classifier.add(tf.layers.conv2d({filters: 8, kernelSize: 3, activation: 'elu', inputShape: [IMG_SIZE, IMG_SIZE, 3]}))
+            classifier.add(tf.layers.conv2d({filters: 8, kernelSize: 3, activation: 'elu', inputShape: [this.state.img_size, this.state.img_size, 3]}))
             classifier.add(tf.layers.batchNormalization())
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
             classifier.add(tf.layers.globalAveragePooling2d({dataFormat: 'channelsLast'}))
             classifier.add(tf.layers.dense({units: nclasses, activation: 'softmax'}))
         }if(net_size === 1){
-            classifier.add(tf.layers.conv2d({filters: 8, kernelSize: 3, activation: 'elu', inputShape: [IMG_SIZE, IMG_SIZE, 3]}))
+            classifier.add(tf.layers.conv2d({filters: 16, kernelSize: 3, activation: 'elu', inputShape: [this.state.img_size, this.state.img_size, 3]}))
             classifier.add(tf.layers.batchNormalization())
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
-            classifier.add(tf.layers.conv2d({filters: 16, kernelSize: 3, activation: 'elu'}))
+            classifier.add(tf.layers.conv2d({filters: 32, kernelSize: 3, activation: 'elu'}))
             classifier.add(tf.layers.batchNormalization())
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
             classifier.add(tf.layers.globalAveragePooling2d({dataFormat: 'channelsLast'}))
@@ -108,9 +99,23 @@ class KinderNet extends React.Component{
         return classifier
     }
 
-    componentDidMount() {
+    resetValues(){
+        window.train_tensors = tf.zeros([0, this.state.img_size, this.state.img_size, 3])
+        window.train_features = tf.zeros([0, 1024])
+        window.train_labels = tf.zeros([0, 2])
+        window.test_tensors = tf.zeros([0, this.state.img_size, this.state.img_size, 3])
+        window.test_features = tf.zeros([0, 1024])
+        window.test_labels = tf.zeros([0, 2])
+        // Inicializa el timer
+        if(use_timer)
+            setTimeout(this.handleTimerOut, base_timer)
+        window.classifier = this.defineNet(0, 2)
+        this.setState({net_size: 0, category: -1, output_on: -1, classifying: false, accuracy: [0, 0],
+        images: [null, null], n_samples: [0,0], n_outputs: [0, 0], category_names: ["Cosa 1", "Cosa 2"]})
         
+    }
 
+    componentDidMount() {
         // create async function to load model
         async function loadModel() {
             return await mobilenet.load();
@@ -118,12 +123,7 @@ class KinderNet extends React.Component{
         // load model
         loadModel().then((mobilenet) => {window.mobilenet=mobilenet; this.setState({listen_keys: true})});
 
-
-        window.classifier =  this.defineNet(this.state.net_size, this.state.n_samples.length)
-
-        // Inicializa el timer
-        if(use_timer)
-            setTimeout(this.handleTimerOut, base_timer)
+        this.resetValues()
     }
 
     handleClassifierChange(net_size){
@@ -230,7 +230,7 @@ class KinderNet extends React.Component{
     argmax(array){ return array.map((x, i) => [x, i]).reduce((r, a) => (a[0] > r[0] ? a : r))[1]}
 
     classifyPic(){
-        const base64ImageData =  this.webcam.getScreenshot()
+        const base64ImageData =  window.webcam.getScreenshot()
 
         // Create a new Image object
         const image = new Image();
@@ -251,8 +251,8 @@ class KinderNet extends React.Component{
             var scores = null
             tf.tidy(() => {
                 var tensor = tf.browser.fromPixels(imageData).expandDims(0);
-                tensor = tf.image.resizeBilinear(tensor, [IMG_SIZE, IMG_SIZE])
-
+                tensor = tf.image.resizeNearestNeighbor(tensor, [this.state.img_size, this.state.img_size])
+                
                 if(this.state.net_size === 2){ 
                     // MobileNet preprocessing
                     output = window.classifier.predict(window.mobilenet.infer(tensor, true))
@@ -277,13 +277,13 @@ class KinderNet extends React.Component{
         let enoughSamples = true
         for(let i = 0; i < this.state.n_samples.length; i++)
             if(this.state.n_samples[i]<MIN_SAMPLES) enoughSamples = false 
-           
-        
+    
         // Fit the model only if there are at least N samples per category, the model is not training
         if(enoughSamples && !this.state.is_training){
 
             this.setState({is_training: true})
-         
+            
+            
             tf.tidy(() => {
 
                 let train_input, test_input
@@ -295,21 +295,21 @@ class KinderNet extends React.Component{
                     train_input = window.train_features
                     test_input = window.test_features
                 }
-
+                
                 window.classifier.fit(train_input, window.train_labels, {
                     batchSize: 8,
-                    epochs: 10,
+                    epochs: 5,
                     shuffle: true,
                     //validationData: [test_input, window.test_labels],
                     //callbacks: {
                     //    onEpochEnd: (epoch, logs) => {
-                        //console.log(`Epoch ${epoch + 1} loss: ${logs.loss.toFixed(2)} acc: ${logs.acc.toFixed(2)} val_loss: ${logs.val_loss.toFixed(2)} val_acc: ${logs.val_acc.toFixed(2)}`);
-                    //    console.log(`Epoch ${epoch + 1} loss: ${logs.loss.toFixed(2)} acc: ${logs.acc.toFixed(2)}`);
+                    //    console.log(`Epoch ${epoch + 1} loss: ${logs.loss.toFixed(2)} acc: ${logs.acc.toFixed(2)} val_loss: ${logs.val_loss.toFixed(2)} val_acc: ${logs.val_acc.toFixed(2)}`);
+                    //    //console.log(`Epoch ${epoch + 1} loss: ${logs.loss.toFixed(2)} acc: ${logs.acc.toFixed(2)}`);
                     //}
                     //},
-                    yieldEvery: 'never',
+                    //yieldEvery: 'never',
                 }).then(() => {
-                    
+
                     // convert one-hot encoding to integer labels
                     let test_labels_int = []
                     for(let i = 0; i < window.test_labels.shape[0]; i++){
@@ -326,11 +326,12 @@ class KinderNet extends React.Component{
                         for(let i = 0; i < predictions.length; i++){
                             avgscore[test_labels_int[i]] += predictions[i][test_labels_int[i]]
                             n_samples[test_labels_int[i]] += 1}
+
                         })
                     for(let i = 0; i < avgscore.length; i++){
                         if(n_samples[i] > 0) avgscore[i] = avgscore[i]/n_samples[i]
                     }
-                    
+
                     this.setState({accuracy: avgscore, is_training: false})
 
                 });
@@ -344,14 +345,15 @@ class KinderNet extends React.Component{
 
         if(this.state.output_on === -1 && !this.state.is_adding_pic){
             this.setState({is_adding_pic: true})
+
             let images = this.state.images
             let n_samples = this.state.n_samples
             n_samples[category] += 1
-            images[category] = this.webcam.getScreenshot()
+            images[category] = window.webcam.getScreenshot()
             
             const image = new Image();
             image.src = images[category];
-
+            
             image.onload = () => {
                 const canvas = document.createElement('canvas');
                 canvas.width = image.width;
@@ -361,40 +363,25 @@ class KinderNet extends React.Component{
                 const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
                 var tensor = tf.browser.fromPixels(imageData);
 
-                tensor = tf.image.resizeNearestNeighbor(tensor, [224, 224]).expandDims(0)
+                tensor = tf.image.resizeNearestNeighbor(tensor, [this.state.img_size, this.state.img_size]).expandDims(0);
                 let feature = window.mobilenet.infer(tensor, true)
 
-                tensor = tf.image.resizeNearestNeighbor(tensor, [IMG_SIZE, IMG_SIZE])
-
+                
                 let label = Array(this.state.category_names.length).fill(0)
                 label[category] = 1
                 label = tf.tensor(label).expandDims(0)
 
-                // the first images per class go to test
-                if(n_samples[category] > TEST_SAMPLES){
-                    if(!window.train_tensors){
-                        window.train_tensors = tensor
-                        window.train_features = feature
-                        window.train_labels = label}
-                    else{
-                        // TODO check if it is a better way to concat tensors
-                        window.train_tensors = tf.concat([window.train_tensors, tensor])
-                        window.train_features = tf.concat([window.train_features, feature])
-                        window.train_labels = tf.concat([window.train_labels, label])}
-                    }
-                else{ 
-                    if(!window.test_tensors){
-                        window.test_tensors = tensor
-                        window.test_features = feature
-                        window.test_labels = label}
-                    else{
-                        // TODO check if it is a better way to concat tensors
-                        window.test_tensors = tf.concat([window.test_tensors, tensor])
-                        window.test_features = tf.concat([window.test_features, feature])
-                        window.test_labels = tf.concat([window.test_labels, label])}
-                    }
-                    
+                if(n_samples[category] <= TEST_SAMPLES){
+                    window.test_tensors = tf.concat([window.test_tensors, tensor])
+                    window.test_features = tf.concat([window.test_features, feature])
+                    window.test_labels = tf.concat([window.test_labels, label])}
+                else{
+                    window.train_tensors = tf.concat([window.train_tensors, tensor])
+                    window.train_features = tf.concat([window.train_features, feature])
+                    window.train_labels = tf.concat([window.train_labels, label])}
+
                 this.setState({n_samples,  output_on: category, images, is_adding_pic: false})
+
               };        
               
            
@@ -453,13 +440,14 @@ class KinderNet extends React.Component{
                     <Typography variant="h5" component="div" sx={{ flexGrow: 1 }}>
                         KinderNet: ¡Enseñemos a la compu a ver!
                     </Typography>
-                    <Button onClick={()=>{this.setState({help: true})}} color="inherit">Ayuda</Button>
-                    <Button onClick={()=>{this.setState({about: true})}} color="inherit">Acerca de</Button>
+                    <Button onClick={()=>{this.setState({config: true, listen_keys: false})}} color="inherit">Configuración</Button>
+                    <Button onClick={()=>{this.setState({help: true, listen_keys: false})}} color="inherit">Ayuda</Button>
+                    <Button onClick={()=>{this.setState({about: true, listen_keys: false})}} color="inherit">Acerca de</Button>
                     </Toolbar>
                     
                 </AppBar>
 
-                <Dialog onClose={()=>{this.setState({about: false})}} open={this.state.about}>
+                <Dialog onClose={()=>{this.setState({about: false, listen_keys: true})}} open={this.state.about}>
                     <DialogTitle>KinderNet</DialogTitle>
                     <DialogContent >
                         <Typography align="justify">
@@ -468,13 +456,13 @@ class KinderNet extends React.Component{
                             Los alumnos puedan jugar y experimentar con el proceso de entrenamiento y prueba de redes neuronales, cambiando el tamaño de la red, 
                             cantidad y tipos de clases. La red es sencilla pero puede aprender a discriminar cosas con muy pocos ejemplos.
                             <br/> <br/>
-                            Más detalles en el <Link href="https://github.com/lbugnon/kinderNet">repositorio del proyecto</Link>.
+                            Más detalles en el <Link href="https://github.com/lbugnon/kindernet-page">repositorio del proyecto</Link>.
                         </Typography>
                             
                     </DialogContent>
                 </Dialog>
 
-                <Dialog onClose={()=>{this.setState({help: false})}} open={this.state.help}>
+                <Dialog onClose={()=>{this.setState({help: false, listen_keys: true})}} open={this.state.help}>
                     <DialogTitle>Instrucciones</DialogTitle>
                     <DialogContent >
                         <Typography align="justify">
@@ -499,6 +487,18 @@ class KinderNet extends React.Component{
                             
 
                         </Typography>
+                            
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog onClose={()=>{this.resetValues(); this.setState({config: false, listen_keys: true});}}  open={this.state.config}>
+                    <DialogTitle>Configuración</DialogTitle>
+                    <DialogContent >
+                    <Grid container justifyContent='center' alignItems='center'>
+                        <TextField error={this.state.img_size<16 || this.state.img_size>224} 
+                        helperText={this.state.img_size<16 || this.state.img_size>224 ? 'Usar imágenes entre 16 y 224 píxeles': ''} id="standard-basic" type="number" label="Tamaño de imagen" defaultValue={this.state.img_size} variant="standard" 
+                        onChange={(e) => {this.setState({img_size: Number(e.target.value)})}}/>
+                    </Grid> 
                             
                     </DialogContent>
                 </Dialog>
