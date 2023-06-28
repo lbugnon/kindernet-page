@@ -241,17 +241,18 @@ class KinderNet extends React.Component{
         // Wait for the image to load
         image.onload = () => {
             const canvas = document.createElement('canvas');
-            canvas.width = image.width;
-            canvas.height = image.height;
+            canvas.width = this.state.img_size;
+            canvas.height = this.state.img_size;
             const context = canvas.getContext('2d');
-            context.drawImage(image, 0, 0);
+            context.translate(this.state.img_size, 0);
+            context.scale(-1, 1);
+            context.drawImage(image, 0, 0, canvas.width, canvas.height);
             const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
             
             var output = null
             var scores = null
             tf.tidy(() => {
                 var tensor = tf.browser.fromPixels(imageData).expandDims(0);
-                tensor = tf.image.resizeNearestNeighbor(tensor, [this.state.img_size, this.state.img_size])
                 
                 if(this.state.net_size === 2){ 
                     // MobileNet preprocessing
@@ -298,7 +299,7 @@ class KinderNet extends React.Component{
                 
                 window.classifier.fit(train_input, window.train_labels, {
                     batchSize: 8,
-                    epochs: 5,
+                    epochs: 10,
                     shuffle: true,
                     //validationData: [test_input, window.test_labels],
                     //callbacks: {
@@ -349,21 +350,23 @@ class KinderNet extends React.Component{
             let images = this.state.images
             let n_samples = this.state.n_samples
             n_samples[category] += 1
-            images[category] = window.webcam.getScreenshot()
             
             const image = new Image();
-            image.src = images[category];
+            image.src = window.webcam.getScreenshot();
             
             image.onload = () => {
                 const canvas = document.createElement('canvas');
-                canvas.width = image.width;
-                canvas.height = image.height;
+                canvas.width = this.state.img_size;
+                canvas.height = this.state.img_size;
                 const context = canvas.getContext('2d');
-                context.drawImage(image, 0, 0);
+                context.translate(this.state.img_size, 0);
+                context.scale(-1, 1);
+                context.drawImage(image, 0, 0, canvas.width, canvas.height);
                 const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
-                var tensor = tf.browser.fromPixels(imageData);
 
-                tensor = tf.image.resizeNearestNeighbor(tensor, [this.state.img_size, this.state.img_size]).expandDims(0);
+                images[category] = canvas.toDataURL('image/png');
+
+                var tensor = tf.browser.fromPixels(imageData).expandDims(0);
                 let feature = window.mobilenet.infer(tensor, true)
 
                 
@@ -440,9 +443,9 @@ class KinderNet extends React.Component{
                     <Typography variant="h5" component="div" sx={{ flexGrow: 1 }}>
                         KinderNet: ¡Enseñemos a la compu a ver!
                     </Typography>
-                    <Button onClick={()=>{this.setState({config: true, listen_keys: false})}} color="inherit">Configuración</Button>
-                    <Button onClick={()=>{this.setState({help: true, listen_keys: false})}} color="inherit">Ayuda</Button>
-                    <Button onClick={()=>{this.setState({about: true, listen_keys: false})}} color="inherit">Acerca de</Button>
+                    <Button onClick={()=>{this.setState({config: true, listen_keys: false, classifying: false})}} color="inherit">Configuración</Button>
+                    <Button onClick={()=>{this.setState({help: true, listen_keys: false, classifying: false})}} color="inherit">Ayuda</Button>
+                    <Button onClick={()=>{this.setState({about: true, listen_keys: false, classifying: false})}} color="inherit">Acerca de</Button>
                     </Toolbar>
                     
                 </AppBar>
