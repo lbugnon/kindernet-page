@@ -104,7 +104,6 @@ class KinderNet extends React.Component{
         }
         
         classifier.compile({loss: 'categoricalCrossentropy', optimizer: 'sgd', metrics: ['accuracy']});
-        console.log(classifier.summary())
         return classifier
     }
 
@@ -116,11 +115,10 @@ class KinderNet extends React.Component{
             return await mobilenet.load();
         }
         // load model
-        loadModel().then((mobilenet) => {window.mobilenet=mobilenet; this.setState({listen_keys: true}); console.log("mobilenet ok")});
+        loadModel().then((mobilenet) => {window.mobilenet=mobilenet; this.setState({listen_keys: true})});
 
 
         window.classifier =  this.defineNet(this.state.net_size, this.state.n_samples.length)
-        console.log("Init!")
 
         // Inicializa el timer
         if(use_timer)
@@ -166,43 +164,42 @@ class KinderNet extends React.Component{
         n_samples.splice(category, 1)
         
         // remove files and columns of category
-        tf.tidy(() => {
-            if(window.train_labels){
-                let ind = []
-                let labels_data = window.train_labels.arraySync()
-                for(let i = 0; i < window.train_labels.shape[0]; i++)
-                    if(labels_data[i][category] === 0)
-                    ind.push(i)
-                ind = tf.tensor1d(ind, 'int32');
+        if(window.train_labels){
+            let ind = []
+            let labels_data = window.train_labels.arraySync()
+            for(let i = 0; i < window.train_labels.shape[0]; i++)
+                if(labels_data[i][category] === 0)
+                ind.push(i)
+            ind = tf.tensor1d(ind, 'int32');
 
-                window.train_labels = window.train_labels.gather(ind)
-                window.train_features = window.train_features.gather(ind)
-                window.train_tensors = window.train_tensors.gather(ind)
+            window.train_labels = window.train_labels.gather(ind)
+            window.train_features = window.train_features.gather(ind)
+            window.train_tensors = window.train_tensors.gather(ind)
 
-                ind = tf.tensor1d(Array.from(Array(window.train_labels.shape[1]).keys()).filter(x => x !== category), 'int32')
-                window.train_labels = window.train_labels.gather(ind, 1)
-            }              
-            
-            if(window.test_labels){
-                let ind = []
-                let labels_data = window.test_labels.arraySync()
-                for(let i = 0; i < window.test_labels.shape[0]; i++)
-                    if(labels_data[i][category] === 0)
-                    ind.push(i)
-                ind = tf.tensor1d(ind, 'int32');
+            ind = tf.tensor1d(Array.from(Array(window.train_labels.shape[1]).keys()).filter(x => x !== category), 'int32')
+            window.train_labels = window.train_labels.gather(ind, 1)
+        }              
+        
+        if(window.test_labels){
+            let ind = []
+            let labels_data = window.test_labels.arraySync()
+            for(let i = 0; i < window.test_labels.shape[0]; i++)
+                if(labels_data[i][category] === 0)
+                ind.push(i)
+            ind = tf.tensor1d(ind, 'int32');
 
-                window.test_labels = window.test_labels.gather(ind)
-                window.test_features = window.test_features.gather(ind)
-                window.test_tensors = window.test_tensors.gather(ind)
+            window.test_labels = window.test_labels.gather(ind)
+            window.test_features = window.test_features.gather(ind)
+            window.test_tensors = window.test_tensors.gather(ind)
 
-                ind = tf.tensor1d(Array.from(Array(window.test_labels.shape[1]).keys()).filter(x => x !== category), 'int32')
-                window.test_labels = window.test_labels.gather(ind, 1)
-            }
+            ind = tf.tensor1d(Array.from(Array(window.test_labels.shape[1]).keys()).filter(x => x !== category), 'int32')
+            window.test_labels = window.test_labels.gather(ind, 1)
+        }
 
-            window.classifier = this.defineNet(this.state.net_size, n_samples.length)
-            this.setState({n_samples, images, category_names, category: -1, 
-                output_on: -1, classifying: false, accuracy: Array(this.state.category_names.length).fill(0)})
-            })
+        window.classifier = this.defineNet(this.state.net_size, n_samples.length)
+        this.setState({n_samples, images, category_names, category: -1, 
+            output_on: -1, classifying: false, accuracy: Array(this.state.category_names.length).fill(0)})
+
         return
     }
     handleTimerOut(){
@@ -284,7 +281,6 @@ class KinderNet extends React.Component{
         // Fit the model only if there are at least N samples per category, the model is not training
         if(enoughSamples && !this.state.is_training){
 
-            console.log('Training model...')
             this.setState({is_training: true})
          
             tf.tidy(() => {
@@ -298,19 +294,15 @@ class KinderNet extends React.Component{
                     test_input = window.test_features
                 }
 
-                console.log("total count", this.state.n_samples)
-                console.log("train data", train_input.shape)
-                console.log("train labels", window.train_labels.shape)
-                console.log("test data", window.test_tensors.shape)
-                console.log("test labels", window.test_labels.shape)
                 window.classifier.fit(train_input, window.train_labels, {
                     batchSize: 4,
                     epochs: 10,
                     shuffle: true,
-                    validationData: [test_input, window.test_labels],
+                    //validationData: [test_input, window.test_labels],
                     //callbacks: {
                     //    onEpochEnd: (epoch, logs) => {
-                    //    console.log(`Epoch ${epoch + 1} loss: ${logs.loss.toFixed(2)} acc: ${logs.acc.toFixed(2)} val_loss: ${logs.val_loss.toFixed(2)} val_acc: ${logs.val_acc.toFixed(2)}`);
+                        //console.log(`Epoch ${epoch + 1} loss: ${logs.loss.toFixed(2)} acc: ${logs.acc.toFixed(2)} val_loss: ${logs.val_loss.toFixed(2)} val_acc: ${logs.val_acc.toFixed(2)}`);
+                    //    console.log(`Epoch ${epoch + 1} loss: ${logs.loss.toFixed(2)} acc: ${logs.acc.toFixed(2)}`);
                     //}
                     //},
                     yieldEvery: 'never',
@@ -322,27 +314,22 @@ class KinderNet extends React.Component{
                         test_labels_int.push(this.argmax(window.test_labels.arraySync()[i]))
                     }
                     
-                    // get accuracy per class:
-                    let accuracy = Array(this.state.category_names.length).fill(0)
+                    // get avg score per class on test:
+                    let avgscore = Array(this.state.category_names.length).fill(0)
                     let n_samples = Array(this.state.category_names.length).fill(0)
-                    let predictions = window.classifier.predict(test_input).arraySync()
-
-                    for(let i = 0; i < predictions.length; i++){
-                        let argmax = this.argmax(predictions[i])
-                        if(argmax === test_labels_int[i]){
-                            accuracy[argmax] += 1
-                            n_samples[argmax] += 1
-                        }
-                    }
-                    for(let i = 0; i < accuracy.length; i++){
-                        if(n_samples[i] > 0) accuracy[i] = accuracy[i]/n_samples[i]
-                    }
-                    console.log('Training completed.');
-                    console.log("train labels", window.train_labels.shape)
-                    console.log("total count", this.state.n_samples)
-                
                     
-                    this.setState({accuracy, is_training: false})
+                    tf.tidy(() => {
+                        let predictions = window.classifier.predict(test_input).arraySync()
+
+                        for(let i = 0; i < predictions.length; i++){
+                            avgscore[test_labels_int[i]] += predictions[i][test_labels_int[i]]
+                            n_samples[test_labels_int[i]] += 1}
+                        })
+                    for(let i = 0; i < avgscore.length; i++){
+                        if(n_samples[i] > 0) avgscore[i] = avgscore[i]/n_samples[i]
+                    }
+                    
+                    this.setState({accuracy: avgscore, is_training: false})
                     
                 });
                 
@@ -382,7 +369,7 @@ class KinderNet extends React.Component{
                 label = tf.tensor(label).expandDims(0)
 
                 // the first images per class go to test
-                if(n_samples[category] <= TEST_SAMPLES){
+                if(n_samples[category] > TEST_SAMPLES){
                     if(!window.train_tensors){
                         window.train_tensors = tensor
                         window.train_features = feature
