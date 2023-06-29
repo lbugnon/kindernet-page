@@ -6,6 +6,7 @@ import {Link, Toolbar, Dialog, DialogTitle, IconButton, Typography, Button,  Car
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
 import CategoryList from "./CategoryList"
+import ImagesList from "./ImagesList"
 import { Network } from './NeuralNetwork';
 import {height, unit_sep, use_timer, base_timer} from './constants';
 import Avatar from '@mui/material/Avatar';
@@ -13,6 +14,7 @@ import logo from "./ia.png"
 import sinclogo from "./sinc-logo.png"
 import * as tf from '@tensorflow/tfjs'
 import * as mobilenet from '@tensorflow-models/mobilenet';
+
 
 var TEST_SAMPLES = 2
 var MIN_SAMPLES = 5
@@ -42,7 +44,7 @@ class KinderNet extends React.Component{
             classifying: false,
             net_size: 0, // mayor valor, mas compleja la red
             category_names: ["Cosa 1", "Cosa 2"],
-            images: Array(2),
+            images: [Array(2)],
             accuracy: [0, 0],
             scores: [0, 0],
             n_samples : [0,0], // n_samples  de la clase actual durante el entrenamiento
@@ -50,6 +52,7 @@ class KinderNet extends React.Component{
             listen_keys: false,
             output_ypos: [0, 0],
             help: false,
+            show_images: false,
             config: false,
             about: false
         };
@@ -76,16 +79,16 @@ class KinderNet extends React.Component{
         
         let classifier = tf.sequential();
         if(net_size === 0){
-            classifier.add(tf.layers.conv2d({filters: 8, kernelSize: 3, activation: 'elu', inputShape: [this.state.img_size, this.state.img_size, 3]}))
+            classifier.add(tf.layers.conv2d({filters: 8, kernelSize: 3, activation: 'relu', inputShape: [this.state.img_size, this.state.img_size, 3]}))
             classifier.add(tf.layers.batchNormalization())
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
             classifier.add(tf.layers.globalAveragePooling2d({dataFormat: 'channelsLast'}))
             classifier.add(tf.layers.dense({units: nclasses, activation: 'softmax'}))
         }if(net_size === 1){
-            classifier.add(tf.layers.conv2d({filters: 16, kernelSize: 3, activation: 'elu', inputShape: [this.state.img_size, this.state.img_size, 3]}))
+            classifier.add(tf.layers.conv2d({filters: 8, kernelSize: 3, activation: 'relu', inputShape: [this.state.img_size, this.state.img_size, 3]}))
             classifier.add(tf.layers.batchNormalization())
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
-            classifier.add(tf.layers.conv2d({filters: 32, kernelSize: 3, activation: 'elu'}))
+            classifier.add(tf.layers.conv2d({filters: 16, kernelSize: 3, activation: 'relu'}))
             classifier.add(tf.layers.batchNormalization())
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
             classifier.add(tf.layers.globalAveragePooling2d({dataFormat: 'channelsLast'}))
@@ -111,7 +114,7 @@ class KinderNet extends React.Component{
             setTimeout(this.handleTimerOut, base_timer)
         window.classifier = this.defineNet(0, 2)
         this.setState({net_size: 0, category: -1, output_on: -1, classifying: false, accuracy: [0, 0],
-        images: [null, null], n_samples: [0,0], n_outputs: [0, 0], category_names: ["Cosa 1", "Cosa 2"]})
+        images: [[], []], n_samples: [0,0], n_outputs: [0, 0], category_names: ["Cosa 1", "Cosa 2"]})
         
     }
 
@@ -364,7 +367,7 @@ class KinderNet extends React.Component{
                 context.drawImage(image, 0, 0, canvas.width, canvas.height);
                 const imageData = context.getImageData(0, 0, canvas.width, canvas.height);
 
-                images[category] = canvas.toDataURL('image/png');
+                images[category].push(canvas.toDataURL('image/png'));
 
                 var tensor = tf.browser.fromPixels(imageData).expandDims(0);
                 let feature = window.mobilenet.infer(tensor, true)
@@ -443,6 +446,8 @@ class KinderNet extends React.Component{
                     <Typography variant="h5" component="div" sx={{ flexGrow: 1 }}>
                         KinderNet: ¡Enseñemos a la compu a ver!
                     </Typography>
+
+                    <Button disabled={this.state.n_samples.reduce((a, b)=>a+b)===0} onClick={()=>{this.setState({show_images: true, listen_keys: false, classifying: false})}} color="inherit" >Imágenes</Button>
                     <Button onClick={()=>{this.setState({config: true, listen_keys: false, classifying: false})}} color="inherit">Configuración</Button>
                     <Button onClick={()=>{this.setState({help: true, listen_keys: false, classifying: false})}} color="inherit">Ayuda</Button>
                     <Button onClick={()=>{this.setState({about: true, listen_keys: false, classifying: false})}} color="inherit">Acerca de</Button>
@@ -464,6 +469,14 @@ class KinderNet extends React.Component{
                             
                     </DialogContent>
                 </Dialog>
+
+                <Dialog onClose={()=>{this.setState({show_images: false, listen_keys: true})}} open={this.state.show_images}>
+                    <DialogTitle>Imágenes</DialogTitle>
+                    <DialogContent >
+                    <ImagesList images = {this.state.images} category_names={this.state.category_names} n_samples={this.state.n_samples} />  
+                    </DialogContent>
+                </Dialog>
+
 
                 <Dialog onClose={()=>{this.setState({help: false, listen_keys: true})}} open={this.state.help}>
                     <DialogTitle>Instrucciones</DialogTitle>
@@ -544,7 +557,7 @@ class KinderNet extends React.Component{
                     </Grid>
 
                     <Grid item sm={4} lg={2}>
-                        <CategoryList images = {this.state.images}  scores={this.state.classifying?this.state.scores:this.state.accuracy} ypos={ypos} enableKeys={this.handleKeyListen} category_names={this.state.category_names} n_samples={this.state.n_samples} 
+                        <CategoryList images = {this.state.images.map(last_img => last_img?last_img[last_img.length - 1]:null)}  scores={this.state.classifying?this.state.scores:this.state.accuracy} ypos={ypos} enableKeys={this.handleKeyListen} category_names={this.state.category_names} n_samples={this.state.n_samples} 
             get_category_names={this.captureCategoryNames} handleAddCategory={this.handleAddCategory} handleRemoveCategory={this.handleRemoveCategory}/>     
                     </Grid>
 
