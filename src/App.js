@@ -141,6 +141,8 @@ class KinderNet extends React.Component{
         let n_samples = this.state.n_samples
         n_samples.push(0)
         let zeros = Array(category_names.length).fill(0)
+        let images = this.state.images
+        images.push([])
         
         // add column to labels tensor 
         if(window.train_labels){
@@ -155,7 +157,7 @@ class KinderNet extends React.Component{
 
         window.classifier = this.defineNet(this.state.net_size, category_names.length)
         this.setState({category_names, n_samples, category: -1, output_on: -1, 
-            classifying: false, accuracy: zeros})
+            classifying: false, accuracy: zeros, images})
         return
     }
     handleRemoveCategory(category){
@@ -455,7 +457,7 @@ class KinderNet extends React.Component{
                     
                 </AppBar>
 
-                <Dialog onClose={()=>{this.setState({about: false, listen_keys: true})}} open={this.state.about}>
+                <Dialog maxWidth="lg" maxHeight="80%" onClose={()=>{this.setState({about: false, listen_keys: true})}} open={this.state.about}>
                     <DialogTitle>KinderNet</DialogTitle>
                     <DialogContent >
                         <Typography align="justify">
@@ -472,7 +474,7 @@ class KinderNet extends React.Component{
 
                 <Dialog onClose={()=>{this.setState({show_images: false, listen_keys: true})}} open={this.state.show_images}>
                     <DialogTitle>Imágenes</DialogTitle>
-                    <DialogContent >
+                    <DialogContent>
                     <ImagesList images = {this.state.images} category_names={this.state.category_names} n_samples={this.state.n_samples} />  
                     </DialogContent>
                 </Dialog>
