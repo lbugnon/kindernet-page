@@ -79,26 +79,21 @@ class KinderNet extends React.Component{
         
         let classifier = tf.sequential();
         if(net_size === 0){
-            classifier.add(tf.layers.conv2d({filters: 8, kernelSize: 3, activation: 'relu', inputShape: [this.state.img_size, this.state.img_size, 3]}))
+            classifier.add(tf.layers.conv2d({filters: 16, kernelSize: 3, activation: 'relu', inputShape: [this.state.img_size, this.state.img_size, 3]}))
             classifier.add(tf.layers.batchNormalization())
             classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
-            classifier.add(tf.layers.globalAveragePooling2d({dataFormat: 'channelsLast'}))
+            classifier.add(tf.layers.conv2d({filters: 32, kernelSize: 5, activation: 'relu'}))
+            classifier.add(tf.layers.batchNormalization())
+            classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
+            classifier.add(tf.layers.flatten())
             classifier.add(tf.layers.dense({units: nclasses, activation: 'softmax'}))
-        }if(net_size === 1){
-            classifier.add(tf.layers.conv2d({filters: 8, kernelSize: 3, activation: 'relu', inputShape: [this.state.img_size, this.state.img_size, 3]}))
-            classifier.add(tf.layers.batchNormalization())
-            classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
-            classifier.add(tf.layers.conv2d({filters: 16, kernelSize: 3, activation: 'relu'}))
-            classifier.add(tf.layers.batchNormalization())
-            classifier.add(tf.layers.maxPooling2d({poolSize: 2}))
-            classifier.add(tf.layers.globalAveragePooling2d({dataFormat: 'channelsLast'}))
-            classifier.add(tf.layers.dense({units: nclasses, activation: 'softmax'}))
+            classifier.compile({loss: 'categoricalCrossentropy', optimizer: 'adam', metrics: ['accuracy']});
         }
         if(net_size === 2){
             classifier.add(tf.layers.dense({units: nclasses, activation: 'softmax', inputShape: 1024}))
+            classifier.compile({loss: 'categoricalCrossentropy', optimizer: 'sgd', metrics: ['accuracy']});
         }
         
-        classifier.compile({loss: 'categoricalCrossentropy', optimizer: 'sgd', metrics: ['accuracy']});
         return classifier
     }
 
@@ -538,8 +533,6 @@ class KinderNet extends React.Component{
                                 <RadioGroup aria-labelledby="radio-buttons-size" defaultValue="Pequeña">
                                     <FormControlLabel value="Pequeña" control={<Radio onChange={()=>{this.handleClassifierChange(0)}}/>} 
                                     label="Pequeña" />
-                                    <FormControlLabel value="Mediana" control={<Radio onChange={()=>{this.handleClassifierChange(1)}}/>} 
-                                    label="Mediana" />
                                     <FormControlLabel value="Grande" control={<Radio onChange={()=>{this.handleClassifierChange(2)}}/>} 
                                     label="Grande" />
                                 </RadioGroup>
