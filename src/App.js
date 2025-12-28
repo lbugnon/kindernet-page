@@ -2,9 +2,11 @@ import React from 'react';
 import './App.css';
 import Webcam from "react-webcam";
 import {Link, Toolbar, Dialog, DialogTitle, IconButton, Typography, Button,  Card, Box, AppBar, TextField,
-    Grid, CssBaseline, Switch,  FormControlLabel, FormLabel, Radio, RadioGroup, DialogContent} from '@mui/material';
+    Grid, CssBaseline, Switch,  FormControlLabel, FormLabel, Radio, RadioGroup, DialogContent, List, ListItem, ListItemText, ListItemButton} from '@mui/material';
 import AddIcon from '@mui/icons-material/Add';
 import DeleteIcon from '@mui/icons-material/Delete';
+import SaveIcon from '@mui/icons-material/Save';
+import FolderOpenIcon from '@mui/icons-material/FolderOpen';
 import CategoryList from "./CategoryList"
 import ImagesList from "./ImagesList"
 import { Network } from './NeuralNetwork';
@@ -54,7 +56,11 @@ class KinderNet extends React.Component{
             help: false,
             show_images: false,
             config: false,
-            about: false
+            about: false,
+            save_state: false,
+            load_state: false,
+            saved_states: [],
+            save_name: ""
         };
         this.response = null
         this.captureGlobalEvent = this.captureGlobalEvent.bind(this);
@@ -68,6 +74,9 @@ class KinderNet extends React.Component{
         this.handleRemoveCategory = this.handleRemoveCategory.bind(this);
         this.handleKeyListen = this.handleKeyListen.bind(this);
         this.handleDeleteImage = this.handleDeleteImage.bind(this);
+        this.handleSaveState = this.handleSaveState.bind(this);
+        this.handleLoadState = this.handleLoadState.bind(this);
+        this.handleDeleteSavedState = this.handleDeleteSavedState.bind(this);
         
         this.classifyPic = this.classifyPic.bind(this);
     }
@@ -123,6 +132,219 @@ class KinderNet extends React.Component{
         loadModel().then((mobilenet) => {window.mobilenet=mobilenet; this.setState({listen_keys: true})});
 
         this.resetValues()
+        this.loadSavedStatesList()
+    }
+
+    // Save/Load State functionality
+    async handleSaveState() {
+        if (!window.classifier || this.state.n_samples.reduce((a, b) => a + b, 0) === 0) {
+            alert("No hay modelo entrenado o imágenes para guardar")
+            return
+        }
+
+        const stateName = this.state.save_name.trim() || `Estado ${new Date().toLocaleString()}`
+        
+        try {
+            // Save model to IndexedDB
+            const modelKey = `kindernet_model_${Date.now()}`
+            await window.classifier.save(`indexeddb://${modelKey}`)
+            
+            // Convert tensors to arrays for serialization
+            const trainTensorsData = window.train_tensors ? await window.train_tensors.array() : null
+            const trainFeaturesData = window.train_features ? await window.train_features.array() : null
+            const trainLabelsData = window.train_labels ? await window.train_labels.array() : null
+            const testTensorsData = window.test_tensors ? await window.test_tensors.array() : null
+            const testFeaturesData = window.test_features ? await window.test_features.array() : null
+            const testLabelsData = window.test_labels ? await window.test_labels.array() : null
+
+            // Get tensor shapes
+            const tensorShapes = {
+                train_tensors: window.train_tensors ? window.train_tensors.shape : null,
+                train_features: window.train_features ? window.train_features.shape : null,
+                train_labels: window.train_labels ? window.train_labels.shape : null,
+                test_tensors: window.test_tensors ? window.test_tensors.shape : null,
+                test_features: window.test_features ? window.test_features.shape : null,
+                test_labels: window.test_labels ? window.test_labels.shape : null
+            }
+
+            // Prepare state data
+            const stateData = {
+                name: stateName,
+                modelKey: modelKey,
+                category_names: this.state.category_names,
+                images: this.state.images,
+                n_samples: this.state.n_samples,
+                accuracy: this.state.accuracy,
+                net_size: this.state.net_size,
+                img_size: this.state.img_size,
+                tensorShapes: tensorShapes,
+                trainTensorsData: trainTensorsData,
+                trainFeaturesData: trainFeaturesData,
+                trainLabelsData: trainLabelsData,
+                testTensorsData: testTensorsData,
+                testFeaturesData: testFeaturesData,
+                testLabelsData: testLabelsData,
+                savedAt: new Date().toISOString()
+            }
+
+            // Save to localStorage
+            const savedStates = JSON.parse(localStorage.getItem('kindernet_saved_states') || '[]')
+            savedStates.push({
+                name: stateName,
+                key: modelKey,
+                data: stateData,
+                savedAt: stateData.savedAt
+            })
+            localStorage.setItem('kindernet_saved_states', JSON.stringify(savedStates))
+
+            this.loadSavedStatesList()
+            this.setState({ save_state: false, save_name: "" })
+            alert(`Estado "${stateName}" guardado exitosamente`)
+        } catch (error) {
+            console.error("Error saving state:", error)
+            alert("Error al guardar el estado: " + error.message)
+        }
+    }
+
+    async handleLoadState(stateKey, stateData) {
+        try {
+            // Stop any ongoing operations
+            this.setState({ 
+                is_training: false, 
+                classifying: false, 
+                listen_keys: false,
+                load_state: false 
+            })
+
+            // Dispose old tensors to free memory
+            if (window.train_tensors) window.train_tensors.dispose()
+            if (window.train_features) window.train_features.dispose()
+            if (window.train_labels) window.train_labels.dispose()
+            if (window.test_tensors) window.test_tensors.dispose()
+            if (window.test_features) window.test_features.dispose()
+            if (window.test_labels) window.test_labels.dispose()
+            if (window.classifier) window.classifier.dispose()
+
+            // Load model from IndexedDB
+            const modelKey = stateData.modelKey || stateKey
+            window.classifier = await tf.loadLayersModel(`indexeddb://${modelKey}`)
+            
+            // Recompile the model (TensorFlow.js doesn't always preserve compilation state)
+            // Use the same compilation settings as when the model was created
+            if (stateData.net_size === 0) {
+                window.classifier.compile({
+                    loss: 'categoricalCrossentropy', 
+                    optimizer: 'adam', 
+                    metrics: ['accuracy']
+                })
+            } else if (stateData.net_size === 2) {
+                window.classifier.compile({
+                    loss: 'categoricalCrossentropy', 
+                    optimizer: 'sgd', 
+                    metrics: ['accuracy']
+                })
+            } else {
+                // Default compilation for other net sizes
+                window.classifier.compile({
+                    loss: 'categoricalCrossentropy', 
+                    optimizer: 'adam', 
+                    metrics: ['accuracy']
+                })
+            }
+            
+            // Verify model is compiled
+            if (!window.classifier.optimizer) {
+                throw new Error("Model failed to compile after loading")
+            }
+
+            // Restore tensors from arrays
+            if (stateData.trainTensorsData && stateData.tensorShapes && stateData.tensorShapes.train_tensors) {
+                window.train_tensors = tf.tensor(stateData.trainTensorsData, stateData.tensorShapes.train_tensors)
+            } else {
+                window.train_tensors = tf.zeros([0, stateData.img_size, stateData.img_size, 3])
+            }
+
+            if (stateData.trainFeaturesData && stateData.tensorShapes && stateData.tensorShapes.train_features) {
+                window.train_features = tf.tensor(stateData.trainFeaturesData, stateData.tensorShapes.train_features)
+            } else {
+                window.train_features = tf.zeros([0, 1024])
+            }
+
+            if (stateData.trainLabelsData && stateData.tensorShapes && stateData.tensorShapes.train_labels) {
+                window.train_labels = tf.tensor(stateData.trainLabelsData, stateData.tensorShapes.train_labels)
+            } else {
+                window.train_labels = tf.zeros([0, stateData.category_names.length])
+            }
+
+            if (stateData.testTensorsData && stateData.tensorShapes && stateData.tensorShapes.test_tensors) {
+                window.test_tensors = tf.tensor(stateData.testTensorsData, stateData.tensorShapes.test_tensors)
+            } else {
+                window.test_tensors = tf.zeros([0, stateData.img_size, stateData.img_size, 3])
+            }
+
+            if (stateData.testFeaturesData && stateData.tensorShapes && stateData.tensorShapes.test_features) {
+                window.test_features = tf.tensor(stateData.testFeaturesData, stateData.tensorShapes.test_features)
+            } else {
+                window.test_features = tf.zeros([0, 1024])
+            }
+
+            if (stateData.testLabelsData && stateData.tensorShapes && stateData.tensorShapes.test_labels) {
+                window.test_labels = tf.tensor(stateData.testLabelsData, stateData.tensorShapes.test_labels)
+            } else {
+                window.test_labels = tf.zeros([0, stateData.category_names.length])
+            }
+
+            // Restore state
+            this.setState({
+                category_names: stateData.category_names,
+                images: stateData.images,
+                n_samples: stateData.n_samples,
+                accuracy: stateData.accuracy || Array(stateData.category_names.length).fill(0),
+                net_size: stateData.net_size,
+                img_size: stateData.img_size,
+                category: -1,
+                output_on: -1,
+                classifying: false,
+                listen_keys: true
+            })
+
+            alert(`Estado "${stateData.name || 'Sin nombre'}" cargado exitosamente`)
+        } catch (error) {
+            console.error("Error loading state:", error)
+            alert("Error al cargar el estado: " + error.message)
+            this.setState({ listen_keys: true })
+        }
+    }
+
+    handleDeleteSavedState(stateKey, event) {
+        event.stopPropagation()
+        if (!window.confirm("¿Estás seguro de que quieres eliminar este estado guardado?")) {
+            return
+        }
+
+        try {
+            // Remove from localStorage
+            const savedStates = JSON.parse(localStorage.getItem('kindernet_saved_states') || '[]')
+            const filteredStates = savedStates.filter(state => state.key !== stateKey)
+            localStorage.setItem('kindernet_saved_states', JSON.stringify(filteredStates))
+
+            // Try to delete model from IndexedDB (best effort)
+            // Note: IndexedDB cleanup might need manual intervention in browser dev tools
+            this.loadSavedStatesList()
+        } catch (error) {
+            console.error("Error deleting state:", error)
+            alert("Error al eliminar el estado: " + error.message)
+        }
+    }
+
+    loadSavedStatesList() {
+        try {
+            const savedStates = JSON.parse(localStorage.getItem('kindernet_saved_states') || '[]')
+            this.setState({ saved_states: savedStates })
+        } catch (error) {
+            console.error("Error loading saved states list:", error)
+            this.setState({ saved_states: [] })
+        }
     }
 
     handleClassifierChange(net_size){
@@ -565,6 +787,8 @@ class KinderNet extends React.Component{
                     </Typography>
 
                     <Button disabled={this.state.n_samples.reduce((a, b)=>a+b)===0} onClick={()=>{this.setState({show_images: true, listen_keys: false, classifying: false})}} color="inherit" >Imágenes</Button>
+                    <Button startIcon={<SaveIcon />} disabled={this.state.n_samples.reduce((a, b)=>a+b)===0 || this.state.is_training} onClick={()=>{this.setState({save_state: true, listen_keys: false, classifying: false})}} color="inherit">Guardar Estado</Button>
+                    <Button startIcon={<FolderOpenIcon />} onClick={()=>{this.loadSavedStatesList(); this.setState({load_state: true, listen_keys: false, classifying: false})}} color="inherit">Cargar Estado</Button>
                     <Button onClick={()=>{this.setState({config: true, listen_keys: false, classifying: false})}} color="inherit">Configuración</Button>
                     <Button onClick={()=>{this.setState({help: true, listen_keys: false, classifying: false})}} color="inherit">Ayuda</Button>
                     <Button onClick={()=>{this.setState({about: true, listen_keys: false, classifying: false})}} color="inherit">Acerca de</Button>
@@ -624,6 +848,80 @@ class KinderNet extends React.Component{
                     </DialogContent>
                 </Dialog>
 
+                <Dialog onClose={()=>{this.setState({save_state: false, save_name: "", listen_keys: true})}} open={this.state.save_state}>
+                    <DialogTitle>Guardar Estado</DialogTitle>
+                    <DialogContent>
+                        <Grid container spacing={2} sx={{ mt: 1 }}>
+                            <Grid item xs={12}>
+                                <TextField 
+                                    fullWidth
+                                    label="Nombre del estado" 
+                                    value={this.state.save_name}
+                                    onChange={(e) => {this.setState({save_name: e.target.value})}}
+                                    placeholder={`Estado ${new Date().toLocaleString()}`}
+                                    variant="standard"
+                                />
+                            </Grid>
+                            <Grid item xs={12}>
+                                <Typography variant="body2" color="text.secondary">
+                                    Se guardará: modelo entrenado, {this.state.category_names.length} categoría(s), {this.state.n_samples.reduce((a, b) => a + b, 0)} imagen(es)
+                                </Typography>
+                            </Grid>
+                            <Grid item xs={12}>
+                                <Button 
+                                    fullWidth 
+                                    variant="contained" 
+                                    startIcon={<SaveIcon />}
+                                    onClick={this.handleSaveState}
+                                    disabled={this.state.is_training}
+                                >
+                                    Guardar
+                                </Button>
+                            </Grid>
+                        </Grid>
+                    </DialogContent>
+                </Dialog>
+
+                <Dialog onClose={()=>{this.setState({load_state: false, listen_keys: true})}} open={this.state.load_state} maxWidth="sm" fullWidth>
+                    <DialogTitle>Cargar Estado</DialogTitle>
+                    <DialogContent>
+                        {this.state.saved_states.length === 0 ? (
+                            <Typography variant="body2" color="text.secondary" sx={{ py: 2 }}>
+                                No hay estados guardados. Guarda un estado primero.
+                            </Typography>
+                        ) : (
+                            <List>
+                                {this.state.saved_states.map((savedState, index) => (
+                                    <ListItem 
+                                        key={savedState.key || index}
+                                        disablePadding
+                                        secondaryAction={
+                                            <IconButton 
+                                                edge="end" 
+                                                onClick={(e) => this.handleDeleteSavedState(savedState.key, e)}
+                                                color="error"
+                                            >
+                                                <DeleteIcon />
+                                            </IconButton>
+                                        }
+                                    >
+                                        <ListItemButton onClick={() => this.handleLoadState(savedState.key, savedState.data)}>
+                                            <ListItemText 
+                                                primary={savedState.name || `Estado ${index + 1}`}
+                                                secondary={
+                                                    `${savedState.data.category_names.length} categoría(s), ` +
+                                                    `${savedState.data.n_samples.reduce((a, b) => a + b, 0)} imagen(es) - ` +
+                                                    `${new Date(savedState.savedAt).toLocaleString()}`
+                                                }
+                                            />
+                                        </ListItemButton>
+                                    </ListItem>
+                                ))}
+                            </List>
+                        )}
+                    </DialogContent>
+                </Dialog>
+
                 <Dialog onClose={()=>{this.resetValues(); this.setState({config: false, listen_keys: true});}}  open={this.state.config}>
                     <DialogTitle>Configuración</DialogTitle>
                     <DialogContent >
@@ -650,7 +948,7 @@ class KinderNet extends React.Component{
                             </Grid> 
                             <FormLabel id="radio-buttons-size">Tamaño de la red neuronal</FormLabel>
                             <Grid container justifyContent='center' alignItems='center'>
-                                <RadioGroup aria-labelledby="radio-buttons-size" defaultValue="Pequeña">
+                                <RadioGroup aria-labelledby="radio-buttons-size" value={this.state.net_size === 0 ? "Pequeña" : "Grande"}>
                                     <FormControlLabel value="Pequeña" control={<Radio onChange={()=>{this.handleClassifierChange(0)}}/>} 
                                     label="Pequeña" />
                                     <FormControlLabel value="Grande" control={<Radio onChange={()=>{this.handleClassifierChange(2)}}/>} 
