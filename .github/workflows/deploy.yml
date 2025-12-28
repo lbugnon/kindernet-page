@@ -10,10 +10,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Build
-        run: |
-          # If static: skip
-          # If npm-based app:
-          npm ci
+        run: 
           npm run build
       - name: Deploy
         uses: JamesIves/github-pages-deploy-action@v4
