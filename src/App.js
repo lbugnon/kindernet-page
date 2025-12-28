@@ -67,6 +67,7 @@ class KinderNet extends React.Component{
         this.handleAddCategory = this.handleAddCategory.bind(this);
         this.handleRemoveCategory = this.handleRemoveCategory.bind(this);
         this.handleKeyListen = this.handleKeyListen.bind(this);
+        this.handleDeleteImage = this.handleDeleteImage.bind(this);
         
         this.classifyPic = this.classifyPic.bind(this);
     }
@@ -203,6 +204,125 @@ class KinderNet extends React.Component{
 
         return
     }
+    
+    handleDeleteImage(category, imageIndex){
+        // No permitir eliminar si no hay imágenes
+        if(this.state.n_samples[category] === 0 || imageIndex >= this.state.n_samples[category]){
+            return
+        }
+
+        let images = this.state.images
+        let n_samples = this.state.n_samples
+        
+        // Determinar si la imagen está en test o train
+        const isTestImage = imageIndex < TEST_SAMPLES
+        
+        // Eliminar la imagen del array
+        images[category].splice(imageIndex, 1)
+        n_samples[category] -= 1
+
+        // Calcular el índice en los tensores correspondientes
+        // Primero contar cuántas imágenes de test/train hay en categorías anteriores
+        let testTensorIndex = 0
+        let trainTensorIndex = 0
+        
+        for(let cat = 0; cat < category; cat++){
+            const catSamples = this.state.n_samples[cat]
+            for(let i = 0; i < catSamples; i++){
+                if(i < TEST_SAMPLES){
+                    testTensorIndex++
+                } else {
+                    trainTensorIndex++
+                }
+            }
+        }
+        
+        // Agregar el offset dentro de la categoría actual
+        if(isTestImage){
+            testTensorIndex += imageIndex
+        } else {
+            trainTensorIndex += (imageIndex - TEST_SAMPLES)
+        }
+        
+        // Eliminar de los tensores correspondientes usando gather
+        // No usar tf.tidy() aquí porque estamos asignando a variables globales
+        if(isTestImage && window.test_tensors && window.test_tensors.shape[0] > testTensorIndex && testTensorIndex >= 0){
+            const totalTest = window.test_tensors.shape[0]
+            const indices = Array.from(Array(totalTest).keys())
+                .filter(i => i !== testTensorIndex)
+            
+            if(indices.length > 0){
+                const indicesTensor = tf.tensor1d(indices, 'int32')
+                // Crear nuevos tensores primero
+                const oldTestTensors = window.test_tensors
+                const oldTestFeatures = window.test_features
+                const oldTestLabels = window.test_labels
+                
+                window.test_tensors = oldTestTensors.gather(indicesTensor)
+                window.test_features = oldTestFeatures.gather(indicesTensor)
+                window.test_labels = oldTestLabels.gather(indicesTensor)
+                
+                // Dispose de los tensores antiguos
+                oldTestTensors.dispose()
+                oldTestFeatures.dispose()
+                oldTestLabels.dispose()
+                indicesTensor.dispose()
+            } else {
+                // Si no quedan elementos, crear tensores vacíos
+                if(window.test_tensors) window.test_tensors.dispose()
+                if(window.test_features) window.test_features.dispose()
+                if(window.test_labels) window.test_labels.dispose()
+                
+                window.test_tensors = tf.zeros([0, this.state.img_size, this.state.img_size, 3])
+                window.test_features = tf.zeros([0, 1024])
+                window.test_labels = tf.zeros([0, this.state.category_names.length])
+            }
+        }
+        
+        if(!isTestImage && window.train_tensors && window.train_tensors.shape[0] > trainTensorIndex && trainTensorIndex >= 0){
+            const totalTrain = window.train_tensors.shape[0]
+            const indices = Array.from(Array(totalTrain).keys())
+                .filter(i => i !== trainTensorIndex)
+            
+            if(indices.length > 0){
+                const indicesTensor = tf.tensor1d(indices, 'int32')
+                // Crear nuevos tensores primero
+                const oldTrainTensors = window.train_tensors
+                const oldTrainFeatures = window.train_features
+                const oldTrainLabels = window.train_labels
+                
+                window.train_tensors = oldTrainTensors.gather(indicesTensor)
+                window.train_features = oldTrainFeatures.gather(indicesTensor)
+                window.train_labels = oldTrainLabels.gather(indicesTensor)
+                
+                // Dispose de los tensores antiguos
+                oldTrainTensors.dispose()
+                oldTrainFeatures.dispose()
+                oldTrainLabels.dispose()
+                indicesTensor.dispose()
+            } else {
+                if(window.train_tensors) window.train_tensors.dispose()
+                if(window.train_features) window.train_features.dispose()
+                if(window.train_labels) window.train_labels.dispose()
+                
+                window.train_tensors = tf.zeros([0, this.state.img_size, this.state.img_size, 3])
+                window.train_features = tf.zeros([0, 1024])
+                window.train_labels = tf.zeros([0, this.state.category_names.length])
+            }
+        }
+        
+        // Resetear accuracy ya que el modelo necesita reentrenarse
+        this.setState({
+            images: images,
+            n_samples: n_samples,
+            accuracy: Array(this.state.category_names.length).fill(0),
+            is_training: false
+        })
+        
+        // Si hay suficientes muestras, reentrenar automáticamente
+        this.trainClassifier()
+    }
+    
     handleTimerOut(){
 
         if(!this.state.classifying){
@@ -470,7 +590,7 @@ class KinderNet extends React.Component{
                 <Dialog onClose={()=>{this.setState({show_images: false, listen_keys: true})}} open={this.state.show_images}>
                     <DialogTitle>Imágenes</DialogTitle>
                     <DialogContent>
-                    <ImagesList images = {this.state.images} category_names={this.state.category_names} n_samples={this.state.n_samples} />  
+                    <ImagesList images = {this.state.images} category_names={this.state.category_names} n_samples={this.state.n_samples} onDeleteImage={this.handleDeleteImage} />  
                     </DialogContent>
                 </Dialog>
 
